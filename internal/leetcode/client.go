@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"leetcode-anki/internal/auth"
@@ -90,6 +92,9 @@ func (c *Client) doGraphQL(ctx context.Context, opName, query string, vars map[s
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
+	if debugLog {
+		appendDebugLog(opName, raw)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, statusError(resp.StatusCode, raw)
 	}
@@ -153,16 +158,36 @@ func (c *Client) doREST(ctx context.Context, method, url string, in any, out any
 // need the body for diagnostics should enable debug logging instead.
 func statusError(code int, body []byte) error {
 	if debugLog {
-		// Hook for future --debug flag; for now this branch is unreachable.
 		return fmt.Errorf("status %d: %s", code, string(body))
 	}
 	return fmt.Errorf("status %d", code)
 }
 
-// debugLog is a package-level toggle reserved for a future --debug flag that
-// will write raw response bodies to a per-session log file. Until that flag
-// exists, statusError suppresses bodies unconditionally.
-var debugLog = false
+// debugLog enables raw GraphQL response logging when the LEETCODE_DEBUG env
+// var is non-empty. When on, each response body is appended to
+// `<UserCacheDir>/leetcode-anki/debug.log` (mode 0600), and statusError
+// includes the response body in returned errors. Used to diagnose schema
+// drift in LeetCode's GraphQL responses.
+var debugLog = os.Getenv("LEETCODE_DEBUG") != ""
+
+// appendDebugLog writes one line `<opName>\t<raw>` to the debug log file.
+// Failures are swallowed: diagnostics must never break the request path.
+func appendDebugLog(opName string, raw []byte) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return
+	}
+	dir := filepath.Join(cacheDir, "leetcode-anki")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "%s\t%s\n", opName, raw)
+}
 
 // setHeaders attaches the headers that authenticated leetcode.com endpoints
 // require (Cookie, x-csrftoken, Referer, User-Agent). Centralising this here
