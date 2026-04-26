@@ -1,5 +1,7 @@
 package leetcode
 
+import "time"
+
 type TopicTag struct {
 	Name           string `json:"name"`
 	NameTranslated string `json:"nameTranslated"`
@@ -72,6 +74,18 @@ type RunResult struct {
 	RuntimeError       string   `json:"runtime_error"`
 	FullRuntimeError   string   `json:"full_runtime_error"`
 	LastTestcase       string   `json:"last_testcase"`
+}
+
+// Submission is one historical entry from a Problem's submission list.
+// Sourced from `questionSubmissionList`; the SR package folds these into
+// scheduler input (timestamps + notes carry the [anki:N] grade tags).
+type Submission struct {
+	ID         string
+	OccurredAt time.Time
+	Accepted   bool   // statusDisplay == "Accepted"
+	Lang       string // langSlug, e.g. "golang", "python3"
+	Notes      string // verbatim from the wire; "" when absent
+	FlagType   string // e.g. "WHITE" — round-tripped on note writes to avoid clobbering manual flags
 }
 
 // SubmitResult is the verdict from `submit` after polling.
