@@ -22,12 +22,11 @@ func (l listItem) FilterValue() string { return l.fav.Name }
 
 // listsDelegate renders a single list row as
 //   "▸  <name>            <count> problems"
-// in the borderless minimal style. Selected rows show the cursor glyph and
-// render the title bold; unselected rows pad the cursor slot with spaces so
+// in the borderless minimal style. Width comes from the live list.Model so
+// resizes reflow correctly. Selected rows show the cursor glyph and render
+// the title bold; unselected rows pad the cursor slot with spaces so
 // columns stay aligned regardless of selection state.
-type listsDelegate struct {
-	width int
-}
+type listsDelegate struct{}
 
 func (d listsDelegate) Height() int                             { return 1 }
 func (d listsDelegate) Spacing() int                            { return 0 }
@@ -46,7 +45,7 @@ func (d listsDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 	}
 	count := dimStyle.Render(fmt.Sprintf("%d problems", it.fav.QuestionCount))
 	left := " " + cursor + title
-	gap := d.width - lipgloss.Width(left) - lipgloss.Width(count) - 2
+	gap := m.Width() - lipgloss.Width(left) - lipgloss.Width(count) - 2
 	if gap < 2 {
 		gap = 2
 	}
@@ -58,7 +57,7 @@ func newListsList(width, height int, lists []leetcode.FavoriteList) list.Model {
 	for i, f := range lists {
 		items[i] = listItem{fav: f}
 	}
-	l := list.New(items, listsDelegate{width: width}, width, height)
+	l := list.New(items, listsDelegate{}, width, height)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)

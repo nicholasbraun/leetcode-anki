@@ -63,11 +63,10 @@ func isTried(status *string) bool {
 }
 
 // problemsDelegate renders one problem per row in the borderless minimal
-// style. Selected rows show the cursor glyph and bold title; columns stay
-// aligned regardless of selection state.
-type problemsDelegate struct {
-	width int
-}
+// style. Width comes from the live list.Model so resizes reflow correctly.
+// Selected rows show the cursor glyph and bold title; columns stay aligned
+// regardless of selection state.
+type problemsDelegate struct{}
 
 func (d problemsDelegate) Height() int                             { return 1 }
 func (d problemsDelegate) Spacing() int                            { return 0 }
@@ -78,6 +77,7 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	if !ok {
 		return
 	}
+	width := m.Width()
 	cursor := "  "
 	if index == m.Index() {
 		cursor = breadcrumbActiveStyle.Render(glyphCursor) + " "
@@ -105,7 +105,7 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	// Available width for the title is whatever's left after the fixed
 	// columns and a 2-space minimum gap before the difficulty.
 	leftConsumed := 1 + lipgloss.Width(cursor) + lipgloss.Width(statusCell) + lipgloss.Width(num) + 2
-	titleMax := d.width - leftConsumed - diffW - 2
+	titleMax := width - leftConsumed - diffW - 2
 	if titleMax < 8 {
 		titleMax = 8
 	}
@@ -118,7 +118,7 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	title := titleStyleFn.Render(titleStr)
 
 	left := " " + cursor + statusCell + num + "  " + title
-	gap := d.width - lipgloss.Width(left) - diffW - 1
+	gap := width - lipgloss.Width(left) - diffW - 1
 	if gap < 2 {
 		gap = 2
 	}
@@ -130,7 +130,7 @@ func newProblemsList(width, height int, qs []leetcode.Question, listName string,
 	for i, q := range qs {
 		items[i] = problemItem{q: q, hasLocalDraft: drafts[q.TitleSlug]}
 	}
-	l := list.New(items, problemsDelegate{width: width}, width, height)
+	l := list.New(items, problemsDelegate{}, width, height)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
