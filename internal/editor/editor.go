@@ -19,30 +19,30 @@ var validSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // extByLangSlug maps LeetCode's `langSlug` values to a sensible file extension.
 // Unknown slugs fall back to .txt.
 var extByLangSlug = map[string]string{
-	"golang":      "go",
-	"python":      "py",
-	"python3":     "py",
-	"cpp":         "cpp",
-	"c":           "c",
-	"java":        "java",
-	"javascript":  "js",
-	"typescript":  "ts",
-	"rust":        "rs",
-	"ruby":        "rb",
-	"swift":       "swift",
-	"kotlin":      "kt",
-	"scala":       "scala",
-	"csharp":      "cs",
-	"php":         "php",
-	"bash":        "sh",
-	"mysql":       "sql",
-	"mssql":       "sql",
-	"oraclesql":   "sql",
-	"postgresql":  "sql",
-	"elixir":      "ex",
-	"erlang":      "erl",
-	"racket":      "rkt",
-	"dart":        "dart",
+	"golang":     "go",
+	"python":     "py",
+	"python3":    "py",
+	"cpp":        "cpp",
+	"c":          "c",
+	"java":       "java",
+	"javascript": "js",
+	"typescript": "ts",
+	"rust":       "rs",
+	"ruby":       "rb",
+	"swift":      "swift",
+	"kotlin":     "kt",
+	"scala":      "scala",
+	"csharp":     "cs",
+	"php":        "php",
+	"bash":       "sh",
+	"mysql":      "sql",
+	"mssql":      "sql",
+	"oraclesql":  "sql",
+	"postgresql": "sql",
+	"elixir":     "ex",
+	"erlang":     "erl",
+	"racket":     "rkt",
+	"dart":       "dart",
 }
 
 // Ext returns the file extension (without leading dot) for a given langSlug.
@@ -69,27 +69,18 @@ func SolutionPath(titleSlug, langSlug string) (string, error) {
 	return filepath.Join(dir, "leetcode-anki", titleSlug, "solution."+Ext(langSlug)), nil
 }
 
-// ExistingSolutionPath returns the on-disk path of a previously-written
-// solution for this problem+language, or "" if no file exists. Used to detect
-// resumable work without scaffolding a fresh file.
-func ExistingSolutionPath(titleSlug, langSlug string) string {
-	if langSlug == "" {
-		return ""
-	}
-	p, err := SolutionPath(titleSlug, langSlug)
-	if err != nil {
-		return ""
-	}
-	if _, err := os.Stat(p); err == nil {
-		return p
-	}
-	return ""
-}
+// Cache is the on-disk store for scaffolded solution files, rooted at
+// os.UserCacheDir()/leetcode-anki. The zero value is usable; NewCache exists
+// only to make construction at the wiring site read consistently.
+type Cache struct{}
 
-// ScaffoldFile creates the solution file (with the language's starter snippet)
-// if it does not already exist. If the file exists, it is left untouched so the
+// NewCache returns a Cache backed by os.UserCacheDir().
+func NewCache() *Cache { return &Cache{} }
+
+// Scaffold creates the solution file (with the language's starter snippet) if
+// it does not already exist. If the file exists, it is left untouched so the
 // user can resume work in progress. Returns the resolved file path.
-func ScaffoldFile(titleSlug, langSlug, snippet string) (string, error) {
+func (c *Cache) Scaffold(titleSlug, langSlug, snippet string) (string, error) {
 	path, err := SolutionPath(titleSlug, langSlug)
 	if err != nil {
 		return "", err
@@ -108,38 +99,8 @@ func ScaffoldFile(titleSlug, langSlug, snippet string) (string, error) {
 	return path, nil
 }
 
-// resolveEditor picks the user's editor: $VISUAL → $EDITOR → "vi".
-func resolveEditor() string {
-	if v := os.Getenv("VISUAL"); v != "" {
-		return v
-	}
-	if v := os.Getenv("EDITOR"); v != "" {
-		return v
-	}
-	return "vi"
-}
-
-// EditorDoneMsg is delivered to the Bubble Tea Update loop after the editor exits.
-type EditorDoneMsg struct {
-	// Path is the file the editor was launched on. Stored for callers that
-	// want to read the post-edit contents without re-resolving the path.
-	Path string
-	// Err is non-nil if the editor exited non-zero or the OS couldn't launch it.
-	Err error
-}
-
-// OpenInEditor returns a tea.Cmd that suspends the TUI, runs the user's editor
-// on `path`, and on exit emits an EditorDoneMsg.
-func OpenInEditor(path string) tea.Cmd {
-	editor := resolveEditor()
-	cmd := exec.Command(editor, path)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return EditorDoneMsg{Path: path, Err: err}
-	})
-}
-
-// ReadSolution returns the current contents of the solution file.
-func ReadSolution(path string) (string, error) {
+// Read returns the current contents of the solution file at path.
+func (c *Cache) Read(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read solution: %w", err)
@@ -147,10 +108,27 @@ func ReadSolution(path string) (string, error) {
 	return string(b), nil
 }
 
-// SlugsWithSolutions returns the set of title slugs that have at least one
-// cached solution file. A single ReadDir of the cache root, so callers can
-// stamp every row of the lists screen without an os.Stat per row.
-func SlugsWithSolutions() (map[string]bool, error) {
+// ExistingPath returns the on-disk path of a previously-written solution for
+// this problem+language, or "" if no file exists. Used to detect resumable
+// work without scaffolding a fresh file.
+func (c *Cache) ExistingPath(titleSlug, langSlug string) string {
+	if langSlug == "" {
+		return ""
+	}
+	p, err := SolutionPath(titleSlug, langSlug)
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	return ""
+}
+
+// SlugsWith returns the set of title slugs that have at least one cached
+// solution file. A single ReadDir of the cache root, so callers can stamp
+// every row of the lists screen without an os.Stat per row.
+func (c *Cache) SlugsWith() (map[string]bool, error) {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return nil, err
@@ -175,9 +153,9 @@ func SlugsWithSolutions() (map[string]bool, error) {
 	return out, nil
 }
 
-// HasAnySolution reports whether the slug has at least one cached solution
-// file in any language.
-func HasAnySolution(titleSlug string) bool {
+// HasAny reports whether the slug has at least one cached solution file in
+// any language.
+func (c *Cache) HasAny(titleSlug string) bool {
 	if !validSlug.MatchString(titleSlug) {
 		return false
 	}
@@ -186,6 +164,81 @@ func HasAnySolution(titleSlug string) bool {
 		return false
 	}
 	return slugDirHasSolution(filepath.Join(dir, "leetcode-anki", titleSlug))
+}
+
+// defaultCache backs the package-level free functions. Will be removed once
+// all callers depend on Cache directly.
+var defaultCache = &Cache{}
+
+// ScaffoldFile is a thin wrapper around (*Cache).Scaffold for legacy callers.
+func ScaffoldFile(titleSlug, langSlug, snippet string) (string, error) {
+	return defaultCache.Scaffold(titleSlug, langSlug, snippet)
+}
+
+// ReadSolution is a thin wrapper around (*Cache).Read for legacy callers.
+func ReadSolution(path string) (string, error) {
+	return defaultCache.Read(path)
+}
+
+// ExistingSolutionPath is a thin wrapper around (*Cache).ExistingPath for legacy callers.
+func ExistingSolutionPath(titleSlug, langSlug string) string {
+	return defaultCache.ExistingPath(titleSlug, langSlug)
+}
+
+// SlugsWithSolutions is a thin wrapper around (*Cache).SlugsWith for legacy callers.
+func SlugsWithSolutions() (map[string]bool, error) {
+	return defaultCache.SlugsWith()
+}
+
+// HasAnySolution is a thin wrapper around (*Cache).HasAny for legacy callers.
+func HasAnySolution(titleSlug string) bool {
+	return defaultCache.HasAny(titleSlug)
+}
+
+// resolveEditor picks the user's editor: $VISUAL → $EDITOR → "vi".
+func resolveEditor() string {
+	if v := os.Getenv("VISUAL"); v != "" {
+		return v
+	}
+	if v := os.Getenv("EDITOR"); v != "" {
+		return v
+	}
+	return "vi"
+}
+
+// EditorDoneMsg is delivered to the Bubble Tea Update loop after the editor exits.
+type EditorDoneMsg struct {
+	// Path is the file the editor was launched on. Stored for callers that
+	// want to read the post-edit contents without re-resolving the path.
+	Path string
+	// Err is non-nil if the editor exited non-zero or the OS couldn't launch it.
+	Err error
+}
+
+// Runner spawns the user's editor on a solution file. The zero value is
+// usable; $VISUAL → $EDITOR → "vi" is resolved at Open time, not construction.
+type Runner struct{}
+
+// NewRunner returns a Runner that resolves $VISUAL/$EDITOR at Open time.
+func NewRunner() *Runner { return &Runner{} }
+
+// Open returns a tea.Cmd that suspends the TUI, runs the user's editor on
+// path, and on exit emits an EditorDoneMsg.
+func (r *Runner) Open(path string) tea.Cmd {
+	ed := resolveEditor()
+	cmd := exec.Command(ed, path)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return EditorDoneMsg{Path: path, Err: err}
+	})
+}
+
+// defaultRunner backs the package-level free function. Will be removed once
+// all callers depend on Runner directly.
+var defaultRunner = &Runner{}
+
+// OpenInEditor is a thin wrapper around (*Runner).Open for legacy callers.
+func OpenInEditor(path string) tea.Cmd {
+	return defaultRunner.Open(path)
 }
 
 func slugDirHasSolution(slugDir string) bool {
