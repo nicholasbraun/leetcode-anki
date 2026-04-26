@@ -12,24 +12,34 @@ import (
 )
 
 type problemItem struct {
-	q leetcode.Question
+	q             leetcode.Question
+	hasLocalDraft bool
 }
 
 func (p problemItem) Title() string {
-	status := "·"
-	if p.q.Status != nil {
-		switch strings.ToUpper(*p.q.Status) {
-		case "AC", "ACCEPTED":
-			status = successStyle.Render("✓")
-		case "TRIED", "NOT_STARTED":
-			status = "○"
-		}
-	}
 	premium := ""
 	if p.q.PaidOnly {
 		premium = dimStyle.Render(" 🔒")
 	}
-	return fmt.Sprintf("%s %s. %s%s", status, p.q.QuestionFrontendID, p.q.Title, premium)
+	return fmt.Sprintf("%s %s. %s%s", statusGlyph(p.q.Status, p.hasLocalDraft), p.q.QuestionFrontendID, p.q.Title, premium)
+}
+
+// statusGlyph returns the styled single-character marker shown on each row.
+// A local draft (file on disk) is treated as in-progress even when the
+// server status is NOT_STARTED — the user has clearly started working.
+func statusGlyph(status *string, hasLocalDraft bool) string {
+	if status != nil {
+		switch strings.ToUpper(*status) {
+		case "AC", "ACCEPTED":
+			return successStyle.Render("✓")
+		case "TRIED":
+			return inProgressStyle.Render("✎")
+		}
+	}
+	if hasLocalDraft {
+		return inProgressStyle.Render("✎")
+	}
+	return "·"
 }
 
 func (p problemItem) Description() string {
@@ -41,10 +51,10 @@ func (p problemItem) FilterValue() string {
 	return p.q.QuestionFrontendID + " " + p.q.Title
 }
 
-func newProblemsList(width, height int, qs []leetcode.Question, listName string) list.Model {
+func newProblemsList(width, height int, qs []leetcode.Question, listName string, drafts map[string]bool) list.Model {
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
-		items[i] = problemItem{q: q}
+		items[i] = problemItem{q: q, hasLocalDraft: drafts[q.TitleSlug]}
 	}
 	d := list.NewDefaultDelegate()
 	l := list.New(items, d, width, height)

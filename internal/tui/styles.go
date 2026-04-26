@@ -33,6 +33,10 @@ var (
 	easyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#4ADE80"))
 	mediumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FBBF24"))
 	hardStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#F87171"))
+
+	inProgressStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FBBF24"))
 )
 
 func difficultyStyle(d string) lipgloss.Style {

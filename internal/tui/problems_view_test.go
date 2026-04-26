@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -113,6 +114,41 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	}
 	if len(fc.calls) != 0 {
 		t.Errorf("expected no Question calls on cache hit, got %v", fc.calls)
+	}
+}
+
+func TestProblemItemTitleStatusGlyph(t *testing.T) {
+	ac := "ACCEPTED"
+	tried := "TRIED"
+	notStarted := "NOT_STARTED"
+
+	cases := []struct {
+		name       string
+		status     *string
+		draft      bool
+		wantGlyph  string
+	}{
+		{"accepted", &ac, false, "✓"},
+		{"tried", &tried, false, "✎"},
+		{"draft only", nil, true, "✎"},
+		{"tried and draft", &tried, true, "✎"},
+		{"not_started no draft", &notStarted, false, "·"},
+		{"nil no draft", nil, false, "·"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			it := problemItem{
+				q: leetcode.Question{
+					QuestionFrontendID: "1",
+					Title:              "Two Sum",
+					Status:             tc.status,
+				},
+				hasLocalDraft: tc.draft,
+			}
+			if got := it.Title(); !strings.Contains(got, tc.wantGlyph) {
+				t.Errorf("Title()=%q, expected glyph %q", got, tc.wantGlyph)
+			}
+		})
 	}
 }
 

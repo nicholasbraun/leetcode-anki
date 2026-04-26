@@ -53,6 +53,7 @@ type Model struct {
 	problemsLoading bool
 	problemIndex    int
 	preview         previewState
+	solutionSlugs   map[string]bool
 
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
@@ -153,7 +154,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h = 24
 		}
 		lw, lh, pw, ph := problemsLayout(w, h)
-		m.problems = newProblemsList(lw, lh, msg.questions, m.currentList.Name)
+		m.solutionSlugs = msg.drafts
+		if m.solutionSlugs == nil {
+			m.solutionSlugs = map[string]bool{}
+		}
+		m.problems = newProblemsList(lw, lh, msg.questions, m.currentList.Name, m.solutionSlugs)
 		m.problemsReady = true
 		m.problemIndex = 0
 		m.preview = previewState{}
@@ -318,6 +323,7 @@ type listsLoadedMsg struct {
 
 type problemsLoadedMsg struct {
 	questions []leetcode.Question
+	drafts    map[string]bool
 }
 
 type problemLoadedMsg struct {
@@ -354,7 +360,8 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, slug string) tea.
 		if err != nil {
 			return errMsg{err}
 		}
-		return problemsLoadedMsg{questions: res.Questions}
+		drafts, _ := editor.SlugsWithSolutions()
+		return problemsLoadedMsg{questions: res.Questions, drafts: drafts}
 	}
 }
 
