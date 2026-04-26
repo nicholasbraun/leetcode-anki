@@ -157,6 +157,47 @@ func TestProblemItemTitleStatusGlyph(t *testing.T) {
 	}
 }
 
+func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
+	fc := &fakeClient{}
+	m := NewModel(context.Background(), fc)
+	loadFakeProblems(t, m, []leetcode.Question{
+		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
+	})
+	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
+
+	_, _ = m.Update(submitResultMsg{result: &leetcode.SubmitResult{StatusMsg: "Accepted"}})
+
+	pi, ok := m.problems.Items()[0].(problemItem)
+	if !ok {
+		t.Fatal("item 0 not a problemItem")
+	}
+	if !isAccepted(pi.q.Status) {
+		t.Errorf("list item Status not solved; got %v", pi.q.Status)
+	}
+	if !isAccepted(m.problem.status) {
+		t.Errorf("detail-view status not solved; got %v", m.problem.status)
+	}
+}
+
+func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
+	fc := &fakeClient{}
+	m := NewModel(context.Background(), fc)
+	loadFakeProblems(t, m, []leetcode.Question{
+		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
+	})
+	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
+
+	_, _ = m.Update(submitResultMsg{result: &leetcode.SubmitResult{StatusMsg: "Wrong Answer"}})
+
+	pi, ok := m.problems.Items()[0].(problemItem)
+	if !ok {
+		t.Fatal("item 0 not a problemItem")
+	}
+	if isAccepted(pi.q.Status) {
+		t.Errorf("list item incorrectly marked solved on wrong answer: %v", pi.q.Status)
+	}
+}
+
 func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	fc := &fakeClient{}
 	m := NewModel(context.Background(), fc)

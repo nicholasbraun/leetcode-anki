@@ -235,6 +235,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearInflight()
 		m.result = resultView{kind: resultSubmit, submit: msg.result}
 		m.screen = screenResult
+		if msg.result != nil && msg.result.StatusMsg == "Accepted" && m.currentProblem != nil {
+			m.markSolved(m.currentProblem.TitleSlug)
+		}
 		return m, nil
 	}
 
@@ -314,6 +317,26 @@ func truncateErr(s string, max int) string {
 // keyMatch is a small alias so views can read more naturally.
 func keyMatch(m tea.KeyMsg, b key.Binding) bool {
 	return key.Matches(m, b)
+}
+
+// markSolved updates the in-memory list and the open problem-view to AC
+// after a successful submit. The favorites-list query isn't re-fetched
+// during a session, so without this the row stays at its load-time status
+// and the local-draft signal drags the glyph back to "in progress".
+func (m *Model) markSolved(slug string) {
+	ac := "AC"
+	if m.problemsReady {
+		for i, it := range m.problems.Items() {
+			if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
+				pi.q.Status = &ac
+				m.problems.SetItem(i, pi)
+				break
+			}
+		}
+	}
+	if m.problem.status == nil || !isAccepted(m.problem.status) {
+		m.problem.status = &ac
+	}
 }
 
 // statusFor returns the LeetCode Status for a slug, looked up from the
