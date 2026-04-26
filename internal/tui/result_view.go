@@ -63,10 +63,13 @@ func renderRunResult(r *leetcode.RunResult) string {
 		return errorStyle.Render("Runtime error") + "\n\n" + r.FullRuntimeError +
 			"\n\nLast input:\n" + r.LastTestcase
 	}
+	// LeetCode returns status_msg = "Accepted" whenever user code merely
+	// executes without crashing; actual correctness lives in correct_answer.
 	verdict := r.StatusMsg
-	style := errorStyle
-	if r.CorrectAnswer {
-		style = successStyle
+	style := successStyle
+	if !r.CorrectAnswer {
+		verdict = "Wrong Answer"
+		style = errorStyle
 	}
 	out := style.Render(verdict)
 	out += "\n" + dimStyle.Render(fmt.Sprintf("runtime: %s", r.StatusRuntime))
@@ -83,6 +86,10 @@ func renderRunResult(r *leetcode.RunResult) string {
 	return out
 }
 
+func submitAccepted(r *leetcode.SubmitResult) bool {
+	return r.StatusMsg == "Accepted"
+}
+
 func renderSubmitResult(r *leetcode.SubmitResult) string {
 	if r == nil {
 		return errorStyle.Render("no result")
@@ -95,8 +102,9 @@ func renderSubmitResult(r *leetcode.SubmitResult) string {
 			"\n\nLast input:\n" + r.LastTestcase
 	}
 	verdict := r.StatusMsg
+	accepted := submitAccepted(r)
 	style := errorStyle
-	if verdict == "Accepted" {
+	if accepted {
 		style = successStyle
 	}
 	out := style.Render(verdict)
@@ -115,7 +123,7 @@ func renderSubmitResult(r *leetcode.SubmitResult) string {
 			out += dimStyle.Render(fmt.Sprintf(" (beats %.1f%%)", r.MemoryPercentile))
 		}
 	}
-	if verdict != "Accepted" && r.LastTestcase != "" {
+	if !accepted && r.LastTestcase != "" {
 		out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("failing input:") + "\n" + r.LastTestcase
 		if r.ExpectedOutput != "" {
 			out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("expected:") + "\n" + r.ExpectedOutput
