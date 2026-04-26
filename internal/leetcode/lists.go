@@ -10,21 +10,20 @@ const myCreatedFavoriteListQuery = `
 query myCreatedFavoriteList {
   myCreatedFavoriteList {
     hasMore
-    total
     favorites {
       name
       slug
-      description
       isPublicFavorite
-      questionCount
+      questionNumber
     }
   }
 }
 `
 
 // allFavoritesQuery covers the user's saved/default favorites (in addition to
-// the lists they created). Field shape is `FavoriteNode` which uses
-// `questionCount` (not questionNumber).
+// the lists they created). Field shape is `FavoriteNode`, whose `questionCount`
+// is currently always 0 server-side; created lists carry their real count via
+// `myCreatedFavoriteListQuery`'s `questionNumber` instead.
 const allFavoritesQuery = `
 query allFavorites {
   favoritesLists {

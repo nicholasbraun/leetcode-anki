@@ -42,8 +42,8 @@ func (r *routedDoer) Do(req *http.Request) (*http.Response, error) {
 func TestMyFavoriteLists_MergesAndDedupes(t *testing.T) {
 	d := &routedDoer{byOp: map[string]string{
 		"myCreatedFavoriteList": `{"data":{"myCreatedFavoriteList":{"favorites":[
-			{"slug":"created-1","name":"My Sheet","questionCount":42,"isPublicFavorite":false},
-			{"slug":"shared","name":"Authored","questionCount":10}
+			{"slug":"created-1","name":"My Sheet","questionNumber":42,"isPublicFavorite":false},
+			{"slug":"shared","name":"Authored","questionNumber":10}
 		]}}}`,
 		"allFavorites": `{"data":{"favoritesLists":{"allFavorites":[
 			{"idHash":"shared","name":"Saved (dup)","questionCount":99},

@@ -26,8 +26,7 @@ type Question struct {
 type FavoriteList struct {
 	Slug             string `json:"slug"`
 	Name             string `json:"name"`
-	Description      string `json:"description"`
-	QuestionCount    int    `json:"questionCount"`
+	QuestionCount    int    `json:"questionNumber"`
 	IsPublicFavorite bool   `json:"isPublicFavorite"`
 }
 
