@@ -14,44 +14,113 @@ import (
 )
 
 type problemView struct {
-	vp           viewport.Model
-	rendered     string
-	chosenLang   string // langSlug
-	pickingLang  bool
-	langCursor   int
-	scaffoldPath string
-	status       *string
-	hasDraft     bool
+	vp               viewport.Model
+	rendered         string
+	chosenLang       string // langSlug
+	pickingLang      bool
+	langCursor       int
+	scaffoldPath     string
+	status           *string
+	hasDraft         bool
+	solutionVP       viewport.Model
+	solutionRendered string
 }
 
 func newProblemView(width, height int) problemView {
-	vp := viewport.New(width, height)
-	return problemView{vp: vp}
+	return problemView{
+		vp:         viewport.New(width, height),
+		solutionVP: viewport.New(0, 0),
+	}
 }
 
-func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasDraft bool, width int) error {
+func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasDraft bool, totalWidth, totalHeight int) error {
+	pv.status = status
+	pv.hasDraft = hasDraft
+	pv.chosenLang = pickDefaultLang(p.CodeSnippets, p.TitleSlug)
+	pv.pickingLang = false
+	pv.langCursor = 0
+	return pv.renderForLayout(p, totalWidth, totalHeight)
+}
+
+// renderForLayout (re-)renders the description and cached-solution panes for
+// the current chosenLang and overall window dimensions. Used on initial load,
+// language switches, window resizes, and post-edit refreshes.
+func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, totalHeight int) error {
+	pv.scaffoldPath = editor.ExistingSolutionPath(p.TitleSlug, pv.chosenLang)
+	descW, descH, solW, solH := problemDetailLayout(totalWidth, totalHeight, pv.scaffoldPath != "")
+
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
 		md = p.Content
 	}
-	out, err := render.MarkdownToTerminal(md, width-4)
+	out, err := render.MarkdownToTerminal(md, descW-4)
 	if err != nil {
 		return err
 	}
 	pv.rendered = out
+	pv.vp.Width = descW
+	pv.vp.Height = descH
 	pv.vp.SetContent(out)
 	pv.vp.GotoTop()
 
-	pv.status = status
-	pv.hasDraft = hasDraft
-
-	// Default language: first snippet that's golang/python3, else first available.
-	pv.chosenLang = pickDefaultLang(p.CodeSnippets)
-	pv.pickingLang = false
-	pv.langCursor = 0
-	pv.scaffoldPath = editor.ExistingSolutionPath(p.TitleSlug, pv.chosenLang)
+	pv.solutionVP.Width = solW
+	pv.solutionVP.Height = solH
+	if solW > 0 {
+		// Best-effort: render errors don't block the description pane.
+		sol, _ := renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
+		pv.solutionRendered = sol
+		pv.solutionVP.SetContent(sol)
+		pv.solutionVP.GotoTop()
+	} else {
+		pv.solutionRendered = ""
+		pv.solutionVP.SetContent("")
+	}
 	return nil
 }
+
+// renderCachedSolution loads the cached solution file for slug+langSlug
+// and renders it through glamour as a fenced code block so chroma applies
+// syntax highlighting. Returns "" (no error) when no file is cached.
+func renderCachedSolution(slug, langSlug string, width int) (string, error) {
+	path := editor.ExistingSolutionPath(slug, langSlug)
+	if path == "" {
+		return "", nil
+	}
+	code, err := editor.ReadSolution(path)
+	if err != nil {
+		return "", err
+	}
+	md := "```" + editor.ChromaLang(langSlug) + "\n" + code + "\n```\n"
+	return render.MarkdownToTerminal(md, width)
+}
+
+// problemDetailLayout splits the detail screen between the description (left)
+// and the cached-solution preview (right). Returns 0 widths for the solution
+// pane when there's no cached solution or the terminal can't fit both panes.
+func problemDetailLayout(width, height int, hasSolution bool) (descW, descH, solW, solH int) {
+	descH = height - 5
+	if descH < 5 {
+		descH = 20
+	}
+	solH = descH
+	if !hasSolution || width < detailMinTotalWidth {
+		return width, descH, 0, 0
+	}
+	solW = clampInt(width*4/10, detailSolMinWidth, detailSolMaxWidth)
+	descW = width - solW - detailGap
+	if descW < detailDescMinWidth {
+		return width, descH, 0, 0
+	}
+	return descW, descH, solW, solH
+}
+
+const (
+	detailMinTotalWidth = 100
+	detailDescMinWidth  = 40
+	detailSolMinWidth   = 30
+	detailSolMaxWidth   = 80
+	detailGap           = 2
+)
 
 func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
 	for _, s := range p.CodeSnippets {
@@ -62,7 +131,17 @@ func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
 	return ""
 }
 
-func pickDefaultLang(snippets []leetcode.CodeSnippet) string {
+// pickDefaultLang chooses an initial language for a problem. A language with
+// an existing cached solution wins so the user lands back on whatever they
+// were drafting. Otherwise: golang → python3 → first available.
+func pickDefaultLang(snippets []leetcode.CodeSnippet, slug string) string {
+	if slug != "" {
+		for _, s := range snippets {
+			if editor.ExistingSolutionPath(slug, s.LangSlug) != "" {
+				return s.LangSlug
+			}
+		}
+	}
 	for _, s := range snippets {
 		if s.LangSlug == "golang" {
 			return s.LangSlug
@@ -99,7 +178,7 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Enter):
 				if pv.langCursor < len(snippets) {
 					pv.chosenLang = snippets[pv.langCursor].LangSlug
-					pv.scaffoldPath = editor.ExistingSolutionPath(m.currentProblem.TitleSlug, pv.chosenLang)
+					_ = pv.renderForLayout(m.currentProblem, m.width, m.height)
 				}
 				pv.pickingLang = false
 				return m, nil
@@ -216,9 +295,20 @@ func viewProblemView(m *Model) string {
 	help := helpStyle.Render("e edit · l language · r run · s submit · n next · p prev · esc back · q quit")
 
 	var body string
-	if pv.rendered == "" {
+	switch {
+	case pv.rendered == "":
 		body = "(loading description...)"
-	} else {
+	case pv.solutionRendered != "" && pv.solutionVP.Width > 0:
+		descBox := lipgloss.NewStyle().Width(pv.vp.Width).Render(pv.vp.View())
+		solBox := lipgloss.NewStyle().
+			Width(pv.solutionVP.Width).
+			Padding(0, 1).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderLeft(true).
+			BorderForeground(lipgloss.Color("241")).
+			Render(pv.solutionVP.View())
+		body = lipgloss.JoinHorizontal(lipgloss.Top, descBox, solBox)
+	default:
 		body = pv.vp.View()
 	}
 

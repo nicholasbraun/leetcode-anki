@@ -95,10 +95,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.problems.SetSize(lw, lh)
 			m.preview.setSize(pw, ph)
 		}
-		m.problem.vp.Width = msg.Width
-		m.problem.vp.Height = msg.Height - 5
 		if m.problem.rendered != "" && m.currentProblem != nil {
-			_ = m.problem.setProblem(m.currentProblem, m.problem.status, m.problem.hasDraft, msg.Width)
+			_ = m.problem.renderForLayout(m.currentProblem, msg.Width, msg.Height)
+		} else {
+			m.problem.vp.Width = msg.Width
+			m.problem.vp.Height = msg.Height - 5
 		}
 		return m, nil
 
@@ -190,7 +191,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.problem = newProblemView(w, h)
 		status := m.statusFor(msg.problem.TitleSlug)
 		hasDraft := m.solutionSlugs[msg.problem.TitleSlug]
-		if err := m.problem.setProblem(msg.problem, status, hasDraft, w); err != nil {
+		if err := m.problem.setProblem(msg.problem, status, hasDraft, w, m.height); err != nil {
 			m.err = err
 		}
 		m.screen = screenProblem
@@ -199,6 +200,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case editor.EditorDoneMsg:
 		if msg.Err != nil {
 			m.err = msg.Err
+		}
+		if m.currentProblem != nil {
+			slug := m.currentProblem.TitleSlug
+			if m.solutionSlugs == nil {
+				m.solutionSlugs = map[string]bool{}
+			}
+			m.solutionSlugs[slug] = true
+			m.problem.hasDraft = true
+			if m.problemsReady {
+				for i, it := range m.problems.Items() {
+					if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
+						pi.hasLocalDraft = true
+						m.problems.SetItem(i, pi)
+						break
+					}
+				}
+			}
+			if m.problem.rendered != "" {
+				_ = m.problem.renderForLayout(m.currentProblem, m.width, m.height)
+			}
 		}
 		return m, nil
 
