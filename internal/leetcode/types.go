@@ -76,6 +76,11 @@ type RunResult struct {
 
 // SubmitResult is the verdict from `submit` after polling.
 type SubmitResult struct {
+	// SubmissionID is set in code from the initial /submit/ response, not
+	// from the check-poll body. The SR package needs it to attach a note
+	// to the exact submission via updateSubmissionNote.
+	SubmissionID string `json:"-"`
+
 	State              string  `json:"state"`
 	StatusCode         int     `json:"status_code"`
 	StatusMsg          string  `json:"status_msg"`

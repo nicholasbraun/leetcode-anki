@@ -38,5 +38,6 @@ func (c *Client) Submit(ctx context.Context, slug, lang, questionID, code string
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("decode submit result: %w", err)
 	}
+	out.SubmissionID = sr.SubmissionID.String()
 	return &out, nil
 }
