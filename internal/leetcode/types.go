@@ -88,6 +88,17 @@ type Submission struct {
 	FlagType   string // e.g. "WHITE" — round-tripped on note writes to avoid clobbering manual flags
 }
 
+// ProgressQuestion is one entry in the user's global progress list, sourced
+// from `userProgressQuestionList`. Drives Review-Mode entry: every Problem
+// the user has ever submitted to becomes a candidate, and LastAccepted gates
+// inclusion in the SR rotation.
+type ProgressQuestion struct {
+	TitleSlug       string
+	LastSubmittedAt time.Time
+	NumSubmitted    int
+	LastAccepted    bool // lastResult == "AC"
+}
+
 // SubmitResult is the verdict from `submit` after polling.
 type SubmitResult struct {
 	// SubmissionID is set in code from the initial /submit/ response, not

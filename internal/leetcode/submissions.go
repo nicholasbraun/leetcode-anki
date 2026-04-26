@@ -92,3 +92,64 @@ func (c *Client) SubmissionList(ctx context.Context, slug, nextKey string, limit
 	}
 	return out, nk, nil
 }
+
+const userProgressQuestionListQuery = `
+query userProgressQuestionList($filters: UserProgressQuestionListInput) {
+  userProgressQuestionList(filters: $filters) {
+    totalNum
+    questions {
+      frontendId
+      titleSlug
+      lastSubmittedAt
+      numSubmitted
+      questionStatus
+      lastResult
+    }
+  }
+}
+`
+
+// UserProgress returns a page of every Problem the user has submitted to —
+// the global candidate set for Review-Mode entry. totalNum lets callers page
+// to completion; iterate by skip += len(returned) until skip >= totalNum.
+//
+// LastAccepted (lastResult == "AC") is the gate for inclusion in the SR
+// rotation: only Problems with at least one Accepted submission count.
+func (c *Client) UserProgress(ctx context.Context, skip, limit int) ([]ProgressQuestion, int, error) {
+	vars := map[string]any{
+		"filters": map[string]any{"skip": skip, "limit": limit},
+	}
+	referer := BaseURL + "/progress/"
+
+	data, err := c.doGraphQL(ctx, "userProgressQuestionList", userProgressQuestionListQuery, vars, referer)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var wrap struct {
+		UserProgressQuestionList struct {
+			TotalNum  int `json:"totalNum"`
+			Questions []struct {
+				TitleSlug       string `json:"titleSlug"`
+				LastSubmittedAt string `json:"lastSubmittedAt"`
+				NumSubmitted    int    `json:"numSubmitted"`
+				LastResult      string `json:"lastResult"`
+			} `json:"questions"`
+		} `json:"userProgressQuestionList"`
+	}
+	if err := json.Unmarshal(data, &wrap); err != nil {
+		return nil, 0, fmt.Errorf("decode userProgressQuestionList: %w", err)
+	}
+
+	out := make([]ProgressQuestion, 0, len(wrap.UserProgressQuestionList.Questions))
+	for _, w := range wrap.UserProgressQuestionList.Questions {
+		t, _ := time.Parse(time.RFC3339, w.LastSubmittedAt)
+		out = append(out, ProgressQuestion{
+			TitleSlug:       w.TitleSlug,
+			LastSubmittedAt: t,
+			NumSubmitted:    w.NumSubmitted,
+			LastAccepted:    w.LastResult == "AC",
+		})
+	}
+	return out, wrap.UserProgressQuestionList.TotalNum, nil
+}
