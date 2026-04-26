@@ -86,7 +86,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		listH := msg.Height - 2
+		listH := msg.Height - listsChromeHeight
+		if listH < 5 {
+			listH = 5
+		}
 		if m.listsReady {
 			m.lists.SetSize(msg.Width, listH)
 		}
@@ -132,7 +135,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case listsLoadedMsg:
 		m.listsLoading = false
-		listH := m.height - 2
+		listH := m.height - listsChromeHeight
 		if listH < 5 {
 			listH = 20
 		}
