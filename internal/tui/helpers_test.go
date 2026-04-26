@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"leetcode-anki/internal/editor"
+	"leetcode-anki/internal/sr"
 )
 
 // fakeCache is an in-memory SolutionCache for tests. It records every method
@@ -135,4 +138,35 @@ func (e *fakeEditor) queueDone(msg editor.EditorDoneMsg) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.queued = &msg
+}
+
+// fakeReviews stubs sr.Reviews for TUI tests. Records every Record call so
+// assertions can verify the verdict-detection site invokes SR with the
+// right slug, submission ID, and rating.
+type fakeReviews struct {
+	mu      sync.Mutex
+	records []recordCall
+	status  sr.Status
+	err     error
+}
+
+type recordCall struct {
+	slug, submissionID string
+	rating             int
+	at                 time.Time
+}
+
+func newFakeReviews() *fakeReviews { return &fakeReviews{} }
+
+func (f *fakeReviews) Record(_ context.Context, slug, submissionID string, rating int, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.records = append(f.records, recordCall{slug: slug, submissionID: submissionID, rating: rating, at: at})
+	return f.err
+}
+
+func (f *fakeReviews) Status(_ context.Context, _ string, _ time.Time) (sr.Status, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.status, f.err
 }

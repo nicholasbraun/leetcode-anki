@@ -51,7 +51,7 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 		"a": sampleDetail("a"), "b": sampleDetail("b"),
 		"c": sampleDetail("c"), "d": sampleDetail("d"),
 	}}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []leetcode.Question{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 		{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
@@ -88,7 +88,7 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 
 func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	fc := &fakeClient{details: map[string]*leetcode.ProblemDetail{"a": sampleDetail("a")}}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []leetcode.Question{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -155,7 +155,7 @@ func TestRowGlyph(t *testing.T) {
 
 func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 	fc := &fakeClient{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []leetcode.Question{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -177,7 +177,8 @@ func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 
 func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 	fc := &fakeClient{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor())
+	fr := newFakeReviews()
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	loadFakeProblems(t, m, []leetcode.Question{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -192,11 +193,49 @@ func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 	if isAccepted(pi.q.Status) {
 		t.Errorf("list item incorrectly marked solved on wrong answer: %v", pi.q.Status)
 	}
+	// Wrong Answer must not enter SR; otherwise non-Accepted submissions
+	// would seed a baseline Review and the scheduler would think a
+	// failed problem is "solved enough to review".
+	if len(fr.records) != 0 {
+		t.Errorf("expected no SR Record on Wrong Answer; got %d", len(fr.records))
+	}
+}
+
+// On Accepted, the verdict-detection site must hand off to SR with the
+// just-completed submission's ID — that ID is what attaches a future
+// [anki:N] tag to the right submission.
+func TestSubmitAcceptedRecordsReview(t *testing.T) {
+	fc := &fakeClient{}
+	fr := newFakeReviews()
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	loadFakeProblems(t, m, []leetcode.Question{
+		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
+	})
+	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
+
+	_, _ = m.Update(submitResultMsg{result: &leetcode.SubmitResult{
+		StatusMsg:    "Accepted",
+		SubmissionID: "1988694277",
+	}})
+
+	if len(fr.records) != 1 {
+		t.Fatalf("expected 1 SR Record call, got %d", len(fr.records))
+	}
+	rec := fr.records[0]
+	if rec.slug != "a" {
+		t.Errorf("slug = %q, want %q", rec.slug, "a")
+	}
+	if rec.submissionID != "1988694277" {
+		t.Errorf("submissionID = %q, want %q", rec.submissionID, "1988694277")
+	}
+	if rec.rating != 0 {
+		t.Errorf("rating = %d, want 0 (implicit until grading UI lands)", rec.rating)
+	}
 }
 
 func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	fc := &fakeClient{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []leetcode.Question{
 		{QuestionFrontendID: "1", Title: "Premium", TitleSlug: "p", PaidOnly: true},
 	})

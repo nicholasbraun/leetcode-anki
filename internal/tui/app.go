@@ -11,6 +11,7 @@ import (
 
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/sr"
 )
 
 type screen int
@@ -26,10 +27,11 @@ const (
 // solution cache, editor runner, current list/problem/language, in-flight
 // cancellation) and routes Update/View to the active screen.
 type Model struct {
-	client LeetcodeClient
-	cache  SolutionCache
-	editor Editor
-	ctx    context.Context
+	client  LeetcodeClient
+	cache   SolutionCache
+	editor  Editor
+	reviews sr.Reviews
+	ctx     context.Context
 
 	// cancelInflight cancels the currently in-flight run/submit request when
 	// the user presses esc on the result-loading screen, or when the program
@@ -68,13 +70,14 @@ type Model struct {
 	result resultView
 }
 
-func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor) *Model {
+func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) *Model {
 	return &Model{
-		client: client,
-		cache:  cache,
-		editor: ed,
-		ctx:    ctx,
-		screen: screenLists,
+		client:  client,
+		cache:   cache,
+		editor:  ed,
+		reviews: reviews,
+		ctx:     ctx,
+		screen:  screenLists,
 	}
 }
 
@@ -241,7 +244,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = resultView{kind: resultSubmit, submit: msg.result}
 		m.screen = screenResult
 		if msg.result != nil && msg.result.StatusMsg == "Accepted" && m.currentProblem != nil {
-			m.markSolved(m.currentProblem.TitleSlug)
+			slug := m.currentProblem.TitleSlug
+			m.markSolved(slug)
+			// Rating 0 = implicit "Accepted is Good"; an explicit-grading
+			// screen can later set rating!=0 here. SR errors are swallowed
+			// because the feature is auxiliary — a failed cache write must
+			// not block the user from continuing to work.
+			_ = m.reviews.Record(m.ctx, slug, msg.result.SubmissionID, 0, time.Now())
 		}
 		return m, nil
 	}
@@ -367,8 +376,8 @@ func (m *Model) clearInflight() {
 // Run starts the TUI loop. The provided ctx is the parent context for all
 // outbound HTTP requests; cancelling it (e.g. on SIGINT from the parent
 // process) will abort any in-flight run/submit.
-func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor) error {
-	m := NewModel(ctx, client, cache, ed)
+func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) error {
+	m := NewModel(ctx, client, cache, ed, reviews)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	m.clearInflight()
