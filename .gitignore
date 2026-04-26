@@ -1,0 +1,18 @@
+# leetcode session/csrf cookies — NEVER commit these
+.leetcode-creds.json
+*.creds.json
+
+# Build artefacts
+/leetcode-anki
+/leetcode-anki.exe
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Go
+/dist/
+/bin/
