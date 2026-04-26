@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -47,7 +48,7 @@ func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, has
 // language switches, window resizes, and post-edit refreshes.
 func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, totalHeight int) error {
 	pv.scaffoldPath = editor.ExistingSolutionPath(p.TitleSlug, pv.chosenLang)
-	descW, descH, solW, solH := problemDetailLayout(totalWidth, totalHeight, pv.scaffoldPath != "")
+	descW, descH, solW, solH := problemDetailLayout(totalWidth, totalHeight)
 
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
@@ -65,7 +66,7 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 
 	pv.solutionVP.Width = solW
 	pv.solutionVP.Height = solH
-	if solW > 0 {
+	if solW > 0 && pv.scaffoldPath != "" {
 		// Best-effort: render errors don't block the description pane.
 		sol, _ := renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
 		pv.solutionRendered = sol
@@ -95,15 +96,17 @@ func renderCachedSolution(slug, langSlug string, width int) (string, error) {
 }
 
 // problemDetailLayout splits the detail screen between the description (left)
-// and the cached-solution preview (right). Returns 0 widths for the solution
-// pane when there's no cached solution or the terminal can't fit both panes.
-func problemDetailLayout(width, height int, hasSolution bool) (descW, descH, solW, solH int) {
-	descH = height - 5
+// and the solution / scaffold-prompt pane (right). The right pane is shown
+// regardless of whether a cached solution exists — without one, it carries
+// the "press l / e" prompt instead. Returns 0 widths for the right pane only
+// when the terminal is too narrow to fit both legibly.
+func problemDetailLayout(width, height int) (descW, descH, solW, solH int) {
+	descH = height - problemChromeHeight
 	if descH < 5 {
 		descH = 20
 	}
 	solH = descH
-	if !hasSolution || width < detailMinTotalWidth {
+	if width < detailMinTotalWidth {
 		return width, descH, 0, 0
 	}
 	solW = clampInt(width*4/10, detailSolMinWidth, detailSolMaxWidth)
@@ -120,6 +123,10 @@ const (
 	detailSolMinWidth   = 30
 	detailSolMaxWidth   = 80
 	detailGap           = 2
+
+	// problemChromeHeight reserves lines for breadcrumb, blank, top divider,
+	// bottom divider, and footer. Body fills whatever's left.
+	problemChromeHeight = 5
 )
 
 func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
@@ -278,52 +285,137 @@ func viewProblemView(m *Model) string {
 		return langPickerView(m)
 	}
 
-	header := headerStyle.Render(fmt.Sprintf("%s. %s", m.currentProblem.QuestionFrontendID, m.currentProblem.Title))
-	difficulty := lipgloss.NewStyle().Padding(0, 1).Render(
-		difficultyStyle(m.currentProblem.Difficulty).Render(m.currentProblem.Difficulty),
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	descW, descH, solW, _ := problemDetailLayout(w, m.height)
+
+	crumbs := breadcrumb(w, "leetcode-anki", m.currentList.Name, m.currentProblem.Title)
+	leftLabel := fmt.Sprintf("#%s  %s   %s",
+		m.currentProblem.QuestionFrontendID,
+		m.currentProblem.Title,
+		difficultyLabel(m.currentProblem.Difficulty),
 	)
-	statusRow := difficulty
 	if badge := statusBadge(pv.status, pv.hasDraft); badge != "" {
-		statusRow = lipgloss.JoinHorizontal(lipgloss.Top, difficulty, lipgloss.NewStyle().Padding(0, 1).Render(badge))
-	}
-	lang := dimStyle.Render(fmt.Sprintf("language: %s", pv.chosenLang))
-	scaffold := ""
-	if pv.scaffoldPath != "" {
-		scaffold = dimStyle.Render(" · " + pv.scaffoldPath)
+		leftLabel += "   " + badge
 	}
 
-	help := helpStyle.Render("e edit · l language · r run · s submit · n next · p prev · esc back · q quit")
-
-	var body string
-	switch {
-	case pv.rendered == "":
-		body = "(loading description...)"
-	case pv.solutionRendered != "" && pv.solutionVP.Width > 0:
-		descBox := lipgloss.NewStyle().Width(pv.vp.Width).Render(pv.vp.View())
-		solBox := lipgloss.NewStyle().
-			Width(pv.solutionVP.Width).
-			Padding(0, 1).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderLeft(true).
-			BorderForeground(lipgloss.Color("241")).
-			Render(pv.solutionVP.View())
-		body = lipgloss.JoinHorizontal(lipgloss.Top, descBox, solBox)
-	default:
-		body = pv.vp.View()
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		statusRow,
-		lang+scaffold,
-		body,
-		help,
+	foot := footer(w,
+		footerItem{"e", "edit"},
+		footerItem{"r", "run"},
+		footerItem{"s", "submit"},
+		footerItem{"l", "language"},
+		footerItem{"n/p", "next/prev"},
+		footerItem{"esc", "back"},
+		footerItem{"q", "quit"},
 	)
+
+	if solW <= 0 {
+		// Single-pane fallback: too narrow to split.
+		top := divider(w, leftLabel, 0, "")
+		bot := divider(w, "", 0, "")
+		body := pv.vp.View()
+		if pv.rendered == "" {
+			body = " " + loadingStyle.Render(glyphSpin+" loading…")
+		}
+		return strings.Join([]string{
+			crumbs, "",
+			top,
+			body,
+			bot,
+			foot,
+		}, "\n")
+	}
+
+	// Two-pane layout. Top divider carries left and right labels around ╮.
+	rightLabel := "no solution yet"
+	if pv.scaffoldPath != "" {
+		rightLabel = filepath.Base(pv.scaffoldPath)
+	}
+	leftDiv := divider(descW, leftLabel, 0, "")
+	rightDiv := divider(solW, rightLabel, 0, "")
+	top := leftDiv + dividerLineStyle.Render("╮") + rightDiv
+
+	// Description pane.
+	descBody := pv.vp.View()
+	if pv.rendered == "" {
+		descBody = " " + loadingStyle.Render(glyphSpin+" loading…")
+	}
+	descBox := lipgloss.NewStyle().Width(descW).Height(descH).Render(descBody)
+
+	// Right pane content: cached solution or scaffold prompt.
+	var solBody string
+	if pv.scaffoldPath != "" {
+		solBody = pv.solutionVP.View()
+	} else {
+		solBody = renderScaffoldPrompt(m.currentProblem)
+	}
+
+	// In-flight run/submit status, anchored at the bottom of the right pane.
+	if status := runStatus(m); status != "" {
+		solBody = strings.TrimRight(solBody, "\n") + "\n\n" + status
+	}
+	solBox := lipgloss.NewStyle().Width(solW).Height(descH).Padding(0, 1).Render(solBody)
+
+	// Vertical line between the panes, matching the body height.
+	vlines := make([]string, descH)
+	for i := range vlines {
+		vlines[i] = dividerLineStyle.Render("│")
+	}
+	vline := strings.Join(vlines, "\n")
+
+	middle := lipgloss.JoinHorizontal(lipgloss.Top, descBox, vline, solBox)
+	bot := divider(w, "", descW, "┴")
+
+	return strings.Join([]string{
+		crumbs, "",
+		top,
+		middle,
+		bot,
+		foot,
+	}, "\n")
 }
 
-// statusBadge returns a styled "✓ Solved" / "✎ In progress" label for the
-// detail screen, or "" when the problem is untouched. The same signals
-// drive the lists-screen glyph (statusGlyph) so the two stay in sync.
+// runStatus returns a single-line "⟳ running…" / "⟳ submitting…" indicator
+// for in-flight requests, or "" when none. Rendered in the problem screen
+// rather than as a full-screen takeover so the user can still read the
+// problem (and esc-cancel) while the request is in flight.
+func runStatus(m *Model) string {
+	switch {
+	case m.runLoading:
+		return loadingStyle.Render(glyphSpin + " running…")
+	case m.submitLoading:
+		return loadingStyle.Render(glyphSpin + " submitting…")
+	}
+	return ""
+}
+
+// renderScaffoldPrompt is the right-pane body for problems that don't have
+// a cached solution yet. Lists the available language templates so the user
+// can hit `l` to pick one and `e` to scaffold + edit.
+func renderScaffoldPrompt(p *leetcode.ProblemDetail) string {
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("press  ") + footerKeyStyle.Render("l") + dimStyle.Render("  to pick a language\n"))
+	b.WriteString(dimStyle.Render("press  ") + footerKeyStyle.Render("e") + dimStyle.Render("  to scaffold + edit\n"))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("available templates\n"))
+	const maxRows = 6
+	for i, s := range p.CodeSnippets {
+		if i >= maxRows {
+			extra := len(p.CodeSnippets) - maxRows
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  ⋮  +%d more\n", extra)))
+			break
+		}
+		b.WriteString(dimStyle.Render("  • " + s.LangSlug + "\n"))
+	}
+	return b.String()
+}
+
+// statusBadge returns a styled "✓ Solved" / "✎ In progress" label, or "" when
+// the problem is untouched. Drives both the lists-screen glyph and the
+// problem-screen header so the two stay in sync.
 func statusBadge(status *string, hasLocalDraft bool) string {
 	if isAccepted(status) {
 		return successStyle.Render("✓ Solved")
@@ -336,20 +428,39 @@ func statusBadge(status *string, hasLocalDraft bool) string {
 
 func langPickerView(m *Model) string {
 	pv := &m.problem
-	var b strings.Builder
-	b.WriteString(headerStyle.Render("Pick a language") + "\n\n")
-	for i, s := range m.currentProblem.CodeSnippets {
-		cursor := "  "
-		if i == pv.langCursor {
-			cursor = "▶ "
-		}
-		line := fmt.Sprintf("%s%s (%s)", cursor, s.Lang, s.LangSlug)
-		if i == pv.langCursor {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
-		}
-		b.WriteString(line + "\n")
+	w := m.width
+	if w <= 0 {
+		w = 80
 	}
-	b.WriteString("\n" + helpStyle.Render("↑/↓ select · enter confirm · esc cancel"))
-	return b.String()
-}
+	h := m.height
+	if h <= 0 {
+		h = 24
+	}
 
+	var rows []string
+	rows = append(rows, dimStyle.Render("pick a language"))
+	rows = append(rows, "")
+	for i, s := range m.currentProblem.CodeSnippets {
+		line := s.LangSlug
+		if i == pv.langCursor {
+			line = breadcrumbActiveStyle.Render("▸ ") + lipgloss.NewStyle().Bold(true).Render(s.LangSlug)
+		} else {
+			line = "  " + line
+		}
+		rows = append(rows, line)
+	}
+	body := strings.Join(rows, "\n")
+	modal := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7DD3FC")).
+		Padding(0, 2).
+		Render(body)
+
+	help := footer(w,
+		footerItem{"↑/↓", "move"},
+		footerItem{"enter", "select"},
+		footerItem{"esc", "cancel"},
+	)
+	placed := lipgloss.Place(w, h-1, lipgloss.Center, lipgloss.Center, modal)
+	return placed + "\n" + help
+}

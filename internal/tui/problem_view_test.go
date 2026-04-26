@@ -6,17 +6,8 @@ import (
 )
 
 func TestProblemDetailLayout(t *testing.T) {
-	t.Run("no solution gives full width to description", func(t *testing.T) {
-		descW, _, solW, _ := problemDetailLayout(160, 40, false)
-		if solW != 0 {
-			t.Errorf("solW=%d, want 0", solW)
-		}
-		if descW != 160 {
-			t.Errorf("descW=%d, want 160", descW)
-		}
-	})
-	t.Run("with solution and wide enough, panes split with gap", func(t *testing.T) {
-		descW, _, solW, _ := problemDetailLayout(160, 40, true)
+	t.Run("wide enough splits with gap", func(t *testing.T) {
+		descW, _, solW, _ := problemDetailLayout(160, 40)
 		if solW == 0 {
 			t.Fatal("expected non-zero solution pane on wide terminal")
 		}
@@ -27,8 +18,8 @@ func TestProblemDetailLayout(t *testing.T) {
 			t.Errorf("solW=%d outside [%d,%d]", solW, detailSolMinWidth, detailSolMaxWidth)
 		}
 	})
-	t.Run("narrow terminal drops solution pane", func(t *testing.T) {
-		descW, _, solW, _ := problemDetailLayout(80, 40, true)
+	t.Run("narrow terminal collapses to single pane", func(t *testing.T) {
+		descW, _, solW, _ := problemDetailLayout(80, 40)
 		if solW != 0 {
 			t.Errorf("solW=%d, want 0 on narrow terminal", solW)
 		}

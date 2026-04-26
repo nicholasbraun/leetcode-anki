@@ -279,12 +279,8 @@ func (m *Model) View() string {
 	if m.problemLoading {
 		return loadingView("loading problem...")
 	}
-	if m.runLoading {
-		return loadingView("running on LeetCode...")
-	}
-	if m.submitLoading {
-		return loadingView("submitting to LeetCode...")
-	}
+	// Run/submit do NOT take over the screen: the problem view renders an
+	// inline ⟳ status so the user can keep reading the problem and esc-cancel.
 	return m.viewScreen()
 }
 
