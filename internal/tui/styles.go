@@ -38,6 +38,13 @@ var (
 			Foreground(lipgloss.Color("#4ADE80")).
 			Padding(0, 1)
 
+	// rowSolvedStyle is successStyle without the horizontal padding so the
+	// solved glyph occupies a single cell in list rows. The padded variant
+	// is for banner-style "✓ Accepted" / "✓ Solved" labels.
+	rowSolvedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#4ADE80"))
+
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
 

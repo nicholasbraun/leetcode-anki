@@ -212,14 +212,31 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	}
 }
 
-// TestStatusGlyphsAreSingleCell guards the column-alignment invariant:
-// problemsDelegate.Render assumes every status glyph is exactly one cell
-// wide. If a future glyph swap reintroduces a wide character, the number
-// column will visibly drift on rows that use it.
-func TestStatusGlyphsAreSingleCell(t *testing.T) {
-	for _, g := range []string{glyphSolved, glyphTried, glyphPaid, "·"} {
-		if w := lipgloss.Width(g); w != 1 {
-			t.Errorf("glyph %q has lipgloss.Width=%d, want 1", g, w)
-		}
+// TestRowGlyphRendersSingleCell guards the column-alignment invariant:
+// problemsDelegate.Render assumes every styled status glyph is exactly
+// one cell wide. Banner styles like successStyle add horizontal padding
+// that silently inflates the cell — this test catches that regression.
+func TestRowGlyphRendersSingleCell(t *testing.T) {
+	ac := "ACCEPTED"
+	tried := "TRIED"
+	cases := []struct {
+		name   string
+		status *string
+		draft  bool
+		paid   bool
+	}{
+		{"solved", &ac, false, false},
+		{"tried", &tried, false, false},
+		{"draft only", nil, true, false},
+		{"paid", nil, false, true},
+		{"default", nil, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := rowGlyph(tc.status, tc.draft, tc.paid)
+			if w := lipgloss.Width(got); w != 1 {
+				t.Errorf("rowGlyph width=%d, want 1; raw=%q", w, got)
+			}
+		})
 	}
 }

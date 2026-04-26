@@ -30,7 +30,7 @@ func rowGlyph(status *string, hasLocalDraft, paidOnly bool) string {
 		return dimStyle.Render(glyphPaid)
 	}
 	if isAccepted(status) {
-		return successStyle.Render(glyphSolved)
+		return rowSolvedStyle.Render(glyphSolved)
 	}
 	if isTried(status) || hasLocalDraft {
 		return inProgressStyle.Render(glyphTried)
