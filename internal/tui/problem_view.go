@@ -20,6 +20,8 @@ type problemView struct {
 	pickingLang  bool
 	langCursor   int
 	scaffoldPath string
+	status       *string
+	hasDraft     bool
 }
 
 func newProblemView(width, height int) problemView {
@@ -27,7 +29,7 @@ func newProblemView(width, height int) problemView {
 	return problemView{vp: vp}
 }
 
-func (pv *problemView) setProblem(p *leetcode.ProblemDetail, width int) error {
+func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasDraft bool, width int) error {
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
 		md = p.Content
@@ -39,6 +41,9 @@ func (pv *problemView) setProblem(p *leetcode.ProblemDetail, width int) error {
 	pv.rendered = out
 	pv.vp.SetContent(out)
 	pv.vp.GotoTop()
+
+	pv.status = status
+	pv.hasDraft = hasDraft
 
 	// Default language: first snippet that's golang/python3, else first available.
 	pv.chosenLang = pickDefaultLang(p.CodeSnippets)
@@ -198,6 +203,10 @@ func viewProblemView(m *Model) string {
 	difficulty := lipgloss.NewStyle().Padding(0, 1).Render(
 		difficultyStyle(m.currentProblem.Difficulty).Render(m.currentProblem.Difficulty),
 	)
+	statusRow := difficulty
+	if badge := statusBadge(pv.status, pv.hasDraft); badge != "" {
+		statusRow = lipgloss.JoinHorizontal(lipgloss.Top, difficulty, lipgloss.NewStyle().Padding(0, 1).Render(badge))
+	}
 	lang := dimStyle.Render(fmt.Sprintf("language: %s", pv.chosenLang))
 	scaffold := ""
 	if pv.scaffoldPath != "" {
@@ -215,11 +224,29 @@ func viewProblemView(m *Model) string {
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
-		difficulty,
+		statusRow,
 		lang+scaffold,
 		body,
 		help,
 	)
+}
+
+// statusBadge returns a styled "✓ Solved" / "✎ In progress" label for the
+// detail screen, or "" when the problem is untouched. The same signals
+// drive the lists-screen glyph (statusGlyph) so the two stay in sync.
+func statusBadge(status *string, hasLocalDraft bool) string {
+	if status != nil {
+		switch strings.ToUpper(*status) {
+		case "AC", "ACCEPTED":
+			return successStyle.Render("✓ Solved")
+		case "TRIED":
+			return inProgressStyle.Render("✎ In progress")
+		}
+	}
+	if hasLocalDraft {
+		return inProgressStyle.Render("✎ In progress")
+	}
+	return ""
 }
 
 func langPickerView(m *Model) string {

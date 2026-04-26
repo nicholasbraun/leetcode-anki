@@ -98,7 +98,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.problem.vp.Width = msg.Width
 		m.problem.vp.Height = msg.Height - 5
 		if m.problem.rendered != "" && m.currentProblem != nil {
-			_ = m.problem.setProblem(m.currentProblem, msg.Width)
+			_ = m.problem.setProblem(m.currentProblem, m.problem.status, m.problem.hasDraft, msg.Width)
 		}
 		return m, nil
 
@@ -188,7 +188,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h = 20
 		}
 		m.problem = newProblemView(w, h)
-		if err := m.problem.setProblem(msg.problem, w); err != nil {
+		status := m.statusFor(msg.problem.TitleSlug)
+		hasDraft := m.solutionSlugs[msg.problem.TitleSlug]
+		if err := m.problem.setProblem(msg.problem, status, hasDraft, w); err != nil {
 			m.err = err
 		}
 		m.screen = screenProblem
@@ -291,6 +293,21 @@ func truncateErr(s string, max int) string {
 // keyMatch is a small alias so views can read more naturally.
 func keyMatch(m tea.KeyMsg, b key.Binding) bool {
 	return key.Matches(m, b)
+}
+
+// statusFor returns the LeetCode Status for a slug, looked up from the
+// currently loaded problems list. The detail screen needs this because
+// ProblemDetail itself doesn't carry status — only the list query does.
+func (m *Model) statusFor(slug string) *string {
+	if !m.problemsReady {
+		return nil
+	}
+	for _, it := range m.problems.Items() {
+		if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
+			return pi.q.Status
+		}
+	}
+	return nil
 }
 
 // clearInflight releases the cancel function for the most recent run/submit
