@@ -13,6 +13,8 @@ import (
 	"leetcode-anki/internal/leetcode"
 )
 
+var _ LeetcodeClient = (*leetcode.Client)(nil)
+
 type screen int
 
 const (
@@ -26,7 +28,7 @@ const (
 // current list/problem/language, in-flight cancellation) and routes Update/View
 // to the active screen.
 type Model struct {
-	client *leetcode.Client
+	client LeetcodeClient
 	ctx    context.Context
 
 	// cancelInflight cancels the currently in-flight run/submit request when
@@ -64,7 +66,7 @@ type Model struct {
 	result resultView
 }
 
-func NewModel(ctx context.Context, client *leetcode.Client) *Model {
+func NewModel(ctx context.Context, client LeetcodeClient) *Model {
 	return &Model{
 		client: client,
 		ctx:    ctx,
@@ -282,7 +284,7 @@ func (m *Model) clearInflight() {
 // Run starts the TUI loop. The provided ctx is the parent context for all
 // outbound HTTP requests; cancelling it (e.g. on SIGINT from the parent
 // process) will abort any in-flight run/submit.
-func Run(ctx context.Context, client *leetcode.Client) error {
+func Run(ctx context.Context, client LeetcodeClient) error {
 	m := NewModel(ctx, client)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
@@ -316,7 +318,7 @@ type submitResultMsg struct {
 
 // --- commands ---
 
-func loadListsCmd(parent context.Context, c *leetcode.Client) tea.Cmd {
+func loadListsCmd(parent context.Context, c LeetcodeClient) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
 		defer cancel()
@@ -328,7 +330,7 @@ func loadListsCmd(parent context.Context, c *leetcode.Client) tea.Cmd {
 	}
 }
 
-func loadProblemsCmd(parent context.Context, c *leetcode.Client, slug string) tea.Cmd {
+func loadProblemsCmd(parent context.Context, c LeetcodeClient, slug string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
 		defer cancel()
@@ -340,7 +342,7 @@ func loadProblemsCmd(parent context.Context, c *leetcode.Client, slug string) te
 	}
 }
 
-func loadProblemCmd(parent context.Context, c *leetcode.Client, titleSlug string) tea.Cmd {
+func loadProblemCmd(parent context.Context, c LeetcodeClient, titleSlug string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
 		defer cancel()
@@ -358,7 +360,7 @@ func loadProblemCmd(parent context.Context, c *leetcode.Client, titleSlug string
 // pressing esc during the run can cancel the in-flight HTTP request, instead
 // of the goroutine continuing to run and eventually clobbering model state
 // with a stale runResultMsg.
-func runCodeCmd(parent context.Context, c *leetcode.Client, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
+func runCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
 		code, err := editor.ReadSolution(path)
@@ -374,7 +376,7 @@ func runCodeCmd(parent context.Context, c *leetcode.Client, p *leetcode.ProblemD
 	return cmd, cancel
 }
 
-func submitCodeCmd(parent context.Context, c *leetcode.Client, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
+func submitCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
 		code, err := editor.ReadSolution(path)
