@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
 )
@@ -135,12 +136,12 @@ func TestRowGlyph(t *testing.T) {
 		{"AC short", &acShort, false, false, "✓"},
 		{"FINISH variant", &finish, false, false, "✓"},
 		{"accepted with draft still solved", &ac, true, false, "✓"},
-		{"tried", &tried, false, false, "✎"},
-		{"draft only", nil, true, false, "✎"},
-		{"tried and draft", &tried, true, false, "✎"},
+		{"tried", &tried, false, false, "~"},
+		{"draft only", nil, true, false, "~"},
+		{"tried and draft", &tried, true, false, "~"},
 		{"not_started no draft", &notStarted, false, false, "·"},
 		{"nil no draft", nil, false, false, "·"},
-		{"premium overrides everything", &ac, true, true, "🔒"},
+		{"premium overrides everything", &ac, true, true, "$"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -208,5 +209,17 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	}
 	if len(fc.calls) != 0 {
 		t.Errorf("expected zero Question calls for premium, got %v", fc.calls)
+	}
+}
+
+// TestStatusGlyphsAreSingleCell guards the column-alignment invariant:
+// problemsDelegate.Render assumes every status glyph is exactly one cell
+// wide. If a future glyph swap reintroduces a wide character, the number
+// column will visibly drift on rows that use it.
+func TestStatusGlyphsAreSingleCell(t *testing.T) {
+	for _, g := range []string{glyphSolved, glyphTried, glyphPaid, "·"} {
+		if w := lipgloss.Width(g); w != 1 {
+			t.Errorf("glyph %q has lipgloss.Width=%d, want 1", g, w)
+		}
 	}
 }

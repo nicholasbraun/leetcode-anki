@@ -22,9 +22,9 @@ func (p problemItem) FilterValue() string {
 }
 
 // rowGlyph returns the leftmost status indicator for a problem row:
-// 🔒 for premium, ✓ for accepted, ✎ for in-progress (tried server-side
-// or a local draft on disk), · otherwise. Centralized so the delegate's
-// Render and tests stay aligned.
+// $ for premium, ✓ for accepted, ~ for in-progress (tried server-side
+// or a local draft on disk), · otherwise. Every glyph is a single cell
+// so the status column lines up regardless of font width quirks.
 func rowGlyph(status *string, hasLocalDraft, paidOnly bool) string {
 	if paidOnly {
 		return dimStyle.Render(glyphPaid)
@@ -82,15 +82,10 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	if index == m.Index() {
 		cursor = breadcrumbActiveStyle.Render(glyphCursor) + " "
 	}
-	// Reserve a 3-cell status slot so single-cell glyphs (✓ ✎ ·) and the
-	// 2-cell paid emoji line up with each other.
+	// Every status glyph is single-cell (see TestStatusGlyphsAreSingleCell),
+	// so the column is a fixed 2 cells: glyph + one trailing space.
 	glyph := rowGlyph(it.q.Status, it.hasLocalDraft, it.q.PaidOnly)
-	statusCell := glyph
-	pad := 3 - lipgloss.Width(glyph)
-	if pad < 1 {
-		pad = 1
-	}
-	statusCell += strings.Repeat(" ", pad)
+	statusCell := glyph + " "
 
 	num := fmt.Sprintf("%5s", it.q.QuestionFrontendID+".")
 	diff := difficultyGlyph(it.q.Difficulty) + "  " + difficultyLabel(it.q.Difficulty)

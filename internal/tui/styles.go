@@ -8,8 +8,8 @@ const (
 	glyphHard   = "●"
 	glyphCursor = "▸"
 	glyphSolved = "✓"
-	glyphTried  = "✎"
-	glyphPaid   = "🔒"
+	glyphTried  = "~"
+	glyphPaid   = "$"
 	glyphSpin   = "⟳"
 )
 
