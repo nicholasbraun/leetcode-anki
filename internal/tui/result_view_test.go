@@ -38,7 +38,7 @@ func TestRenderRunResult(t *testing.T) {
 				CodeAnswer:         []string{"[]"},
 				ExpectedCodeAnswer: []string{"[0,1]"},
 			},
-			wantContain: []string{"Wrong Answer", "your answer:", "expected:"},
+			wantContain: []string{"Wrong Answer", "your output", "expected output"},
 			wantAbsent:  []string{"Accepted"},
 		},
 		{
@@ -47,7 +47,7 @@ func TestRenderRunResult(t *testing.T) {
 				CompileError:     "syntax error",
 				FullCompileError: "line 3: missing ';'",
 			},
-			wantContain: []string{"Compile error", "missing ';'"},
+			wantContain: []string{"Compile Error", "missing ';'"},
 		},
 		{
 			name: "runtime error",
@@ -56,7 +56,7 @@ func TestRenderRunResult(t *testing.T) {
 				FullRuntimeError: "index out of range",
 				LastTestcase:     "[1,2]",
 			},
-			wantContain: []string{"Runtime error", "index out of range", "[1,2]"},
+			wantContain: []string{"Runtime Error", "index out of range", "[1,2]"},
 		},
 	}
 	for _, tc := range tests {
@@ -97,7 +97,20 @@ func TestRenderSubmitResult(t *testing.T) {
 				StatusRuntime:  "0 ms",
 			},
 			wantContain: []string{"Accepted", "58/58"},
-			wantAbsent:  []string{"failing input:"},
+			wantAbsent:  []string{"last failed input"},
+		},
+		{
+			name: "accepted with percentiles",
+			in: &leetcode.SubmitResult{
+				StatusMsg:         "Accepted",
+				TotalCorrect:      58,
+				TotalTestcases:    58,
+				StatusRuntime:     "3 ms",
+				StatusMemory:      "4.2 MB",
+				RuntimePercentile: 89.4,
+				MemoryPercentile:  71.2,
+			},
+			wantContain: []string{"Accepted", "beats 89.4%", "beats 71.2%"},
 		},
 		{
 			name: "wrong answer surfaces failing case",
@@ -109,7 +122,7 @@ func TestRenderSubmitResult(t *testing.T) {
 				ExpectedOutput: "[1,2]",
 				CodeOutput:     "[1]",
 			},
-			wantContain: []string{"Wrong Answer", "12/58", "failing input:", "[1,2,3]", "[1,2]", "[1]"},
+			wantContain: []string{"Wrong Answer", "12 / 58", "last failed input", "[1,2,3]", "your output", "[1]", "expected output", "[1,2]"},
 		},
 	}
 	for _, tc := range tests {

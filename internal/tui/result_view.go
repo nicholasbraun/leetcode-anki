@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
 )
@@ -37,100 +36,217 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func viewResultView(m *Model) string {
-	r := m.result
-	var b strings.Builder
-	b.WriteString(headerStyle.Render("Result") + "\n\n")
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
 
-	switch r.kind {
+	crumbs := breadcrumb(w, "leetcode-anki", m.currentList.Name, problemTitle(m), "result")
+
+	var header, body string
+	switch m.result.kind {
 	case resultRun:
-		b.WriteString(renderRunResult(r.run))
+		header, body = runHeaderAndBody(m.result.run)
 	case resultSubmit:
-		b.WriteString(renderSubmitResult(r.submit))
+		header, body = submitHeaderAndBody(m.result.submit)
 	}
 
-	b.WriteString("\n" + helpStyle.Render("enter/esc back · q quit"))
-	return b.String()
+	top := divider(w, header, 0, "")
+	bot := divider(w, "", 0, "")
+	foot := footer(w,
+		footerItem{"enter/esc", "back to problem"},
+		footerItem{"q", "quit"},
+	)
+
+	return strings.Join([]string{
+		crumbs, "",
+		top,
+		"",
+		body,
+		"",
+		bot,
+		foot,
+	}, "\n")
 }
 
-func renderRunResult(r *leetcode.RunResult) string {
+func problemTitle(m *Model) string {
+	if m.currentProblem == nil {
+		return ""
+	}
+	return m.currentProblem.Title
+}
+
+// runHeaderAndBody returns the colored header and the body for a run result.
+// nil yields a "no result" header so the screen still draws.
+func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
 	if r == nil {
-		return errorStyle.Render("no result")
+		return errorStyle.Render("no result"), ""
 	}
-	if r.CompileError != "" {
-		return errorStyle.Render("Compile error") + "\n\n" + r.FullCompileError
+	switch {
+	case r.CompileError != "":
+		return errorStyle.Render("⚠ Compile Error"),
+			errBody("", r.FullCompileError, r.CompileError)
+	case r.RuntimeError != "":
+		return errorStyle.Render("⚠ Runtime Error"),
+			errBody(r.LastTestcase, r.FullRuntimeError, r.RuntimeError)
+	case !r.CorrectAnswer:
+		return errorStyle.Render("✗ Wrong Answer"), runWrongBody(r)
+	default:
+		return successStyle.Render("✓ Accepted"), runAcceptedBody(r)
 	}
-	if r.RuntimeError != "" {
-		return errorStyle.Render("Runtime error") + "\n\n" + r.FullRuntimeError +
-			"\n\nLast input:\n" + r.LastTestcase
-	}
-	// LeetCode returns status_msg = "Accepted" whenever user code merely
-	// executes without crashing; actual correctness lives in correct_answer.
-	verdict := r.StatusMsg
-	style := successStyle
-	if !r.CorrectAnswer {
-		verdict = "Wrong Answer"
-		style = errorStyle
-	}
-	out := style.Render(verdict)
-	out += "\n" + dimStyle.Render(fmt.Sprintf("runtime: %s", r.StatusRuntime))
-	if r.StatusMemory != "" {
-		out += dimStyle.Render(fmt.Sprintf("  memory: %s", r.StatusMemory))
-	}
-	out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("your answer:") + "\n" +
-		strings.Join(r.CodeAnswer, "\n")
-	out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("expected:") + "\n" +
-		strings.Join(r.ExpectedCodeAnswer, "\n")
-	if r.StdOutput != "" {
-		out += "\n\n" + dimStyle.Render("stdout:") + "\n" + r.StdOutput
-	}
-	return out
 }
 
-func submitAccepted(r *leetcode.SubmitResult) bool {
-	return r.StatusMsg == "Accepted"
+// submitHeaderAndBody mirrors runHeaderAndBody for submit verdicts.
+func submitHeaderAndBody(r *leetcode.SubmitResult) (string, string) {
+	if r == nil {
+		return errorStyle.Render("no result"), ""
+	}
+	switch {
+	case r.CompileError != "":
+		return errorStyle.Render("⚠ Compile Error"),
+			errBody("", r.FullCompileError, r.CompileError)
+	case r.RuntimeError != "":
+		return errorStyle.Render("⚠ Runtime Error"),
+			errBody(r.LastTestcase, r.FullRuntimeError, r.RuntimeError)
+	case r.StatusMsg != "Accepted":
+		// LeetCode tags everything that isn't accepted with a status msg
+		// like "Wrong Answer" / "Time Limit Exceeded" — surface that
+		// exact phrase so the user knows what happened.
+		return errorStyle.Render("✗ " + r.StatusMsg), submitWrongBody(r)
+	default:
+		return successStyle.Render("✓ Accepted"), submitAcceptedBody(r)
+	}
+}
+
+func runAcceptedBody(r *leetcode.RunResult) string {
+	rows := []string{}
+	if r.StatusRuntime != "" {
+		rows = append(rows, kv("runtime", r.StatusRuntime))
+	}
+	if r.StatusMemory != "" {
+		rows = append(rows, kv("memory", r.StatusMemory))
+	}
+	if n := len(r.CodeAnswer); n > 0 {
+		rows = append(rows, kv("test cases", fmt.Sprintf("%d ran", n)))
+	}
+	if r.Lang != "" {
+		rows = append(rows, kv("language", r.Lang))
+	}
+	if r.StdOutput != "" {
+		rows = append(rows, "", kv("stdout", ""), indent(r.StdOutput, 4))
+	}
+	return strings.Join(rows, "\n")
+}
+
+func runWrongBody(r *leetcode.RunResult) string {
+	rows := []string{}
+	if n := len(r.CodeAnswer); n > 0 {
+		rows = append(rows, kv("test cases ran", fmt.Sprintf("%d", n)))
+	}
+	rows = append(rows, "")
+	rows = append(rows, kv("your output", ""))
+	rows = append(rows, indent(strings.Join(r.CodeAnswer, "\n"), 4))
+	rows = append(rows, "")
+	rows = append(rows, kv("expected output", ""))
+	rows = append(rows, indent(strings.Join(r.ExpectedCodeAnswer, "\n"), 4))
+	if r.StdOutput != "" {
+		rows = append(rows, "", kv("stdout", ""), indent(r.StdOutput, 4))
+	}
+	return strings.Join(rows, "\n")
+}
+
+func submitAcceptedBody(r *leetcode.SubmitResult) string {
+	rows := []string{}
+	if r.StatusRuntime != "" {
+		val := r.StatusRuntime
+		if r.RuntimePercentile > 0 {
+			val += "    " + dimStyle.Render(fmt.Sprintf("beats %.1f%%", r.RuntimePercentile))
+		}
+		rows = append(rows, kv("runtime", val))
+	}
+	if r.StatusMemory != "" {
+		val := r.StatusMemory
+		if r.MemoryPercentile > 0 {
+			val += "    " + dimStyle.Render(fmt.Sprintf("beats %.1f%%", r.MemoryPercentile))
+		}
+		rows = append(rows, kv("memory", val))
+	}
+	if r.TotalTestcases > 0 {
+		rows = append(rows, kv("test cases", fmt.Sprintf("%d/%d", r.TotalCorrect, r.TotalTestcases)))
+	}
+	if r.Lang != "" {
+		rows = append(rows, kv("language", r.Lang))
+	}
+	return strings.Join(rows, "\n")
+}
+
+func submitWrongBody(r *leetcode.SubmitResult) string {
+	rows := []string{}
+	if r.TotalTestcases > 0 {
+		rows = append(rows, kv("test cases passed", fmt.Sprintf("%d / %d", r.TotalCorrect, r.TotalTestcases)))
+	}
+	if r.LastTestcase != "" {
+		rows = append(rows, kv("last failed input", r.LastTestcase))
+	}
+	if r.CodeOutput != "" {
+		rows = append(rows, kv("your output", r.CodeOutput))
+	}
+	if r.ExpectedOutput != "" {
+		rows = append(rows, kv("expected output", r.ExpectedOutput))
+	}
+	return strings.Join(rows, "\n")
+}
+
+// errBody renders the runtime/compile error layout: optional "last input"
+// block (omit entirely when empty) followed by the full error trace.
+// fullErr falls back to shortErr when the server didn't supply a full one.
+func errBody(lastInput, fullErr, shortErr string) string {
+	rows := []string{}
+	if lastInput != "" {
+		rows = append(rows, kv("last input", ""))
+		rows = append(rows, indent(lastInput, 4))
+		rows = append(rows, "")
+	}
+	rows = append(rows, kv("error", ""))
+	msg := fullErr
+	if msg == "" {
+		msg = shortErr
+	}
+	rows = append(rows, indent(msg, 4))
+	return strings.Join(rows, "\n")
+}
+
+// kv renders a "  key                value" row with an 18-char dim key
+// column. Pass "" for value when the row is a section header followed by
+// an indented block on subsequent lines.
+func kv(key, val string) string {
+	return "  " + dimStyle.Render(fmt.Sprintf("%-18s", key)) + val
+}
+
+// indent prefixes every line of s with n spaces.
+func indent(s string, n int) string {
+	pad := strings.Repeat(" ", n)
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = pad + ln
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderRunResult composes the header + body for tests; the screen view
+// drives the same building blocks through divider chrome.
+func renderRunResult(r *leetcode.RunResult) string {
+	header, body := runHeaderAndBody(r)
+	if body == "" {
+		return header
+	}
+	return header + "\n\n" + body
 }
 
 func renderSubmitResult(r *leetcode.SubmitResult) string {
-	if r == nil {
-		return errorStyle.Render("no result")
+	header, body := submitHeaderAndBody(r)
+	if body == "" {
+		return header
 	}
-	if r.CompileError != "" {
-		return errorStyle.Render("Compile error") + "\n\n" + r.FullCompileError
-	}
-	if r.RuntimeError != "" {
-		return errorStyle.Render("Runtime error") + "\n\n" + r.FullRuntimeError +
-			"\n\nLast input:\n" + r.LastTestcase
-	}
-	verdict := r.StatusMsg
-	accepted := submitAccepted(r)
-	style := errorStyle
-	if accepted {
-		style = successStyle
-	}
-	out := style.Render(verdict)
-	if r.TotalTestcases > 0 {
-		out += "  " + dimStyle.Render(fmt.Sprintf("(%d/%d cases)", r.TotalCorrect, r.TotalTestcases))
-	}
-	if r.StatusRuntime != "" {
-		out += "\n" + dimStyle.Render(fmt.Sprintf("runtime: %s", r.StatusRuntime))
-		if r.RuntimePercentile > 0 {
-			out += dimStyle.Render(fmt.Sprintf(" (beats %.1f%%)", r.RuntimePercentile))
-		}
-	}
-	if r.StatusMemory != "" {
-		out += "\n" + dimStyle.Render(fmt.Sprintf("memory:  %s", r.StatusMemory))
-		if r.MemoryPercentile > 0 {
-			out += dimStyle.Render(fmt.Sprintf(" (beats %.1f%%)", r.MemoryPercentile))
-		}
-	}
-	if !accepted && r.LastTestcase != "" {
-		out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("failing input:") + "\n" + r.LastTestcase
-		if r.ExpectedOutput != "" {
-			out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("expected:") + "\n" + r.ExpectedOutput
-		}
-		if r.CodeOutput != "" {
-			out += "\n\n" + lipgloss.NewStyle().Bold(true).Render("got:") + "\n" + r.CodeOutput
-		}
-	}
-	return out
+	return header + "\n\n" + body
 }
