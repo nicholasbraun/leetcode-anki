@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/editor"
@@ -31,19 +30,12 @@ func newProblemView(width, height int) problemView {
 func (pv *problemView) setProblem(p *leetcode.ProblemDetail, width int) error {
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
-		md = p.Content // fall back to raw HTML if conversion fails
-	}
-	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(width-4),
-	)
-	if err != nil {
-		return err
+		md = p.Content
 	}
 	header := fmt.Sprintf("# %s. %s\n\n%s\n\n",
 		p.QuestionFrontendID, p.Title,
 		difficultyStyle(p.Difficulty).Render(p.Difficulty))
-	out, err := r.Render(header + md)
+	out, err := render.MarkdownToTerminal(header+md, width-4)
 	if err != nil {
 		return err
 	}

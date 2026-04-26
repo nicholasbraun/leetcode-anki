@@ -52,6 +52,7 @@ type Model struct {
 	problemsReady   bool
 	problemsLoading bool
 	problemIndex    int
+	preview         previewState
 
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
@@ -89,7 +90,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lists.SetSize(msg.Width, listH)
 		}
 		if m.problemsReady {
-			m.problems.SetSize(msg.Width, listH)
+			lw, lh, pw, ph := problemsLayout(msg.Width, msg.Height)
+			m.problems.SetSize(lw, lh)
+			m.preview.setSize(pw, ph)
 		}
 		m.problem.vp.Width = msg.Width
 		m.problem.vp.Height = msg.Height - 5
@@ -141,18 +144,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case problemsLoadedMsg:
 		m.problemsLoading = false
-		listH := m.height - 2
-		if listH < 5 {
-			listH = 20
-		}
 		w := m.width
 		if w < 20 {
 			w = 80
 		}
-		m.problems = newProblemsList(w, listH, msg.questions, m.currentList.Name)
+		h := m.height
+		if h < 7 {
+			h = 24
+		}
+		lw, lh, pw, ph := problemsLayout(w, h)
+		m.problems = newProblemsList(lw, lh, msg.questions, m.currentList.Name)
 		m.problemsReady = true
 		m.problemIndex = 0
+		m.preview = previewState{}
+		m.preview.setSize(pw, ph)
 		m.screen = screenProblems
+		return m, syncPreviewCursor(m)
+
+	case previewTickMsg:
+		if !m.preview.tickFired(msg.slug) {
+			return m, nil
+		}
+		return m, loadPreviewCmd(m.ctx, m.client, msg.slug)
+
+	case previewLoadedMsg:
+		m.preview.fetchReturned(msg.slug, msg.detail, msg.err)
 		return m, nil
 
 	case problemLoadedMsg:
@@ -342,6 +358,14 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, slug string) tea.
 	}
 }
 
+// deliverProblem synthesizes the problemLoadedMsg path for a problem already
+// held in the preview cache, sparing the user a redundant 30s GraphQL fetch.
+func deliverProblem(p *leetcode.ProblemDetail) tea.Cmd {
+	return func() tea.Msg {
+		return problemLoadedMsg{problem: p}
+	}
+}
+
 func loadProblemCmd(parent context.Context, c LeetcodeClient, titleSlug string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
@@ -395,6 +419,8 @@ func submitCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.Problem
 // --- timeouts ---
 
 const (
-	defaultTimeout = 30 * time.Second
-	submitTimeout  = 120 * time.Second
+	defaultTimeout      = 30 * time.Second
+	submitTimeout       = 120 * time.Second
+	previewFetchTimeout = 15 * time.Second
+	previewDebounce     = 220 * time.Millisecond
 )

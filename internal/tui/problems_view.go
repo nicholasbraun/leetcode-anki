@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
 )
@@ -66,7 +67,6 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	var cmd tea.Cmd
 	if km, ok := msg.(tea.KeyMsg); ok {
 		if !m.problems.SettingFilter() {
 			switch {
@@ -82,17 +82,101 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 					m.problemIndex = m.problems.Index()
-					m.problemLoading = true
 					m.err = nil
+					if cached := m.preview.cached(it.q.TitleSlug); cached != nil {
+						return m, deliverProblem(cached)
+					}
+					m.problemLoading = true
 					return m, loadProblemCmd(m.ctx, m.client, it.q.TitleSlug)
 				}
+			case keyMatch(km, keys.PreviewUp), keyMatch(km, keys.PreviewDown):
+				return m, m.preview.scrollUpdate(msg)
 			}
 		}
 	}
+	var cmd tea.Cmd
 	m.problems, cmd = m.problems.Update(msg)
-	return m, cmd
+	return m, tea.Batch(cmd, syncPreviewCursor(m))
+}
+
+// syncPreviewCursor diffs the list's currently highlighted slug against the
+// preview's last-recorded one and arms a debounce tick when they differ.
+// Diffing post-update covers every cursor change — arrow keys, page nav,
+// type-ahead jumps, mouse wheel — without intercepting individual key events.
+func syncPreviewCursor(m *Model) tea.Cmd {
+	if !m.problemsReady {
+		return nil
+	}
+	it, ok := m.problems.SelectedItem().(problemItem)
+	if !ok {
+		m.preview.cursorMoved("", "", false)
+		return nil
+	}
+	if !m.preview.cursorMoved(it.q.TitleSlug, it.q.Title, it.q.PaidOnly) {
+		return nil
+	}
+	return previewTick(it.q.TitleSlug, previewDebounce)
 }
 
 func viewProblemsView(m *Model) string {
-	return m.problems.View()
+	listView := m.problems.View()
+	listW, _, previewW, _ := problemsLayout(m.width, m.height)
+	help := helpStyle.Render("enter open · pgup/pgdn scroll preview · / filter · esc back · q quit")
+
+	if previewW <= 0 {
+		return lipgloss.JoinVertical(lipgloss.Left, listView, help)
+	}
+
+	previewBox := lipgloss.NewStyle().
+		Width(previewW).
+		Padding(0, 1).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		BorderForeground(lipgloss.Color("241")).
+		Render(m.preview.view())
+
+	listBox := lipgloss.NewStyle().Width(listW).Render(listView)
+	return lipgloss.JoinVertical(lipgloss.Left,
+		lipgloss.JoinHorizontal(lipgloss.Top, listBox, previewBox),
+		help,
+	)
 }
+
+// problemsLayout splits the screen between the problems list (left) and the
+// description preview (right). Returns 0 widths for the preview when the
+// terminal is too narrow to fit both panes legibly; the caller should then
+// render list-only.
+func problemsLayout(width, height int) (listW, listH, previewW, previewH int) {
+	listH = height - 2
+	if listH < 5 {
+		listH = 20
+	}
+	previewH = listH
+	if width < previewMinTotalWidth {
+		return width, listH, 0, 0
+	}
+	listW = clampInt(width*4/10, previewListMinWidth, previewListMaxWidth)
+	previewW = width - listW - previewGap
+	if previewW < previewMinPaneWidth {
+		return width, listH, 0, 0
+	}
+	return listW, listH, previewW, previewH
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+const (
+	previewMinTotalWidth = 100
+	previewListMinWidth  = 30
+	previewListMaxWidth  = 60
+	previewMinPaneWidth  = 30
+	previewGap           = 2
+)
