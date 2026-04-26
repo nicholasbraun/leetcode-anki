@@ -2,6 +2,8 @@
 
 A Go TUI (Bubble Tea) for working through LeetCode problems: lists the logged-in user's favorites, walks through problems one by one, opens `$EDITOR` on a scaffolded solution file, and runs / submits via LeetCode's `interpret_solution` and `/submit/` endpoints.
 
+The canonical domain vocabulary lives in [CONTEXT.md](CONTEXT.md). Read it before naming anything new and follow the resolutions there (`Problem` not Question, `Problem List` not FavoriteList, `Solution` not Draft, `Verdict` not Result, plus the spaced-repetition terms `Review` / `Review Mode` / `Explore Mode`). When a domain term is missing or fuzzy, sharpen it in `CONTEXT.md` rather than coining a synonym in code.
+
 ## Layout
 
 - `cmd/leetcode-anki/main.go` — single binary entry. Flags: `--logout` (forces re-auth via chromedp).
@@ -31,6 +33,7 @@ go vet ./... && go build ./...
 
 ### Commit discipline
 
+- **Never commit without explicit user approval.** Stage the change, show the diff, propose the commit message, and wait for the user to say "commit" (or equivalent). This holds even when commits were pre-planned in a plan file — surface each one for approval before running `git commit`. Don't auto-commit because "the plan listed it."
 - **Commits MUST be atomic** — one logical change per commit. The project must be in a working state at every commit: `go vet ./...`, `go build ./...`, and `go test ./...` all pass.
 - **Use conventional commits** for the subject: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:`, `perf:`, `style:`, `ci:`. Optional scope: `feat(tui): ...`, `fix(leetcode): ...`.
 - Subject ≤ 72 chars, imperative mood ("add X", not "added X"). Body explains *why* when not obvious from the diff.
@@ -50,9 +53,10 @@ Follow the `comment` skill rules (based on Ousterhout's *A Philosophy of Softwar
 
 ### Tests
 
+- **All new features and fixes MUST be implemented using TDD** — red → green → refactor, as described in the `tdd` skill. Write a failing test first, watch it fail with the expected error, write the minimum code to make it pass, then refactor with the test as the safety net. No "I'll add tests after." If the change is genuinely untestable (e.g. a CSS-only tweak, a one-character typo), say so explicitly before skipping the loop.
 - **Use interfaces at every external boundary** so tests can inject fakes. Concretely:
   - HTTP doer: `pollCheck` and `doREST`/`doGraphQL` should depend on a small `httpDoer interface { Do(*http.Request) (*http.Response, error) }`, not `*http.Client` directly. The production `Client` holds a `*http.Client`; tests pass a fake.
-  - Filesystem: `editor.ScaffoldFile` / `editor.OpenInEditor` should be reachable through an interface so the TUI's edit flow can be tested without spawning `nvim`.
+  - Filesystem and editor: the TUI depends on `SolutionCache` and `Editor` interfaces (`internal/tui/client.go`), not on package-level functions in `internal/editor`, so the edit flow can be exercised against in-memory fakes without writing to a real cache directory or spawning `$EDITOR`.
   - LeetCode API: the TUI depends on a `LeetcodeClient` interface (subset of `*leetcode.Client`'s public methods), not the concrete type, so screen logic can be exercised with canned responses.
 - **`go test ./...` must pass before every commit.** No skipping with `t.Skip` for "I'll fix it later".
 - New code carrying real branching logic — state machines, merge/dedup, schema decoders, retry/backoff — ships with tests in the same commit.
