@@ -13,8 +13,6 @@ import (
 	"leetcode-anki/internal/leetcode"
 )
 
-var _ LeetcodeClient = (*leetcode.Client)(nil)
-
 type screen int
 
 const (
@@ -25,10 +23,12 @@ const (
 )
 
 // Model is the root Bubble Tea model that owns shared TUI state (auth client,
-// current list/problem/language, in-flight cancellation) and routes Update/View
-// to the active screen.
+// solution cache, editor runner, current list/problem/language, in-flight
+// cancellation) and routes Update/View to the active screen.
 type Model struct {
 	client LeetcodeClient
+	cache  SolutionCache
+	editor Editor
 	ctx    context.Context
 
 	// cancelInflight cancels the currently in-flight run/submit request when
@@ -68,9 +68,11 @@ type Model struct {
 	result resultView
 }
 
-func NewModel(ctx context.Context, client LeetcodeClient) *Model {
+func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor) *Model {
 	return &Model{
 		client: client,
+		cache:  cache,
+		editor: ed,
 		ctx:    ctx,
 		screen: screenLists,
 	}
@@ -191,7 +193,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if h < 5 {
 			h = 20
 		}
-		m.problem = newProblemView(w, h)
+		m.problem = newProblemView(m.cache, w, h)
 		status := m.statusFor(msg.problem.TitleSlug)
 		hasDraft := m.solutionSlugs[msg.problem.TitleSlug]
 		if err := m.problem.setProblem(msg.problem, status, hasDraft, w, m.height); err != nil {
@@ -365,8 +367,8 @@ func (m *Model) clearInflight() {
 // Run starts the TUI loop. The provided ctx is the parent context for all
 // outbound HTTP requests; cancelling it (e.g. on SIGINT from the parent
 // process) will abort any in-flight run/submit.
-func Run(ctx context.Context, client LeetcodeClient) error {
-	m := NewModel(ctx, client)
+func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor) error {
+	m := NewModel(ctx, client, cache, ed)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	m.clearInflight()
@@ -412,7 +414,7 @@ func loadListsCmd(parent context.Context, c LeetcodeClient) tea.Cmd {
 	}
 }
 
-func loadProblemsCmd(parent context.Context, c LeetcodeClient, slug string) tea.Cmd {
+func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
 		defer cancel()
@@ -420,7 +422,7 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, slug string) tea.
 		if err != nil {
 			return errMsg{err}
 		}
-		drafts, _ := editor.SlugsWithSolutions()
+		drafts, _ := cache.SlugsWith()
 		return problemsLoadedMsg{questions: res.Questions, drafts: drafts}
 	}
 }
@@ -451,10 +453,10 @@ func loadProblemCmd(parent context.Context, c LeetcodeClient, titleSlug string) 
 // pressing esc during the run can cancel the in-flight HTTP request, instead
 // of the goroutine continuing to run and eventually clobbering model state
 // with a stale runResultMsg.
-func runCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
+func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
-		code, err := editor.ReadSolution(path)
+		code, err := cache.Read(path)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -467,10 +469,10 @@ func runCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.ProblemDet
 	return cmd, cancel
 }
 
-func submitCodeCmd(parent context.Context, c LeetcodeClient, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
+func submitCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
-		code, err := editor.ReadSolution(path)
+		code, err := cache.Read(path)
 		if err != nil {
 			return errMsg{err}
 		}

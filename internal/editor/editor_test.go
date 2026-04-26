@@ -65,12 +65,13 @@ func redirectCacheDir(t *testing.T) string {
 	return dir
 }
 
-func TestScaffoldFile_CreatesWithSnippetWhenAbsent(t *testing.T) {
+func TestScaffold_CreatesWithSnippetWhenAbsent(t *testing.T) {
 	redirectCacheDir(t)
 
-	path, err := ScaffoldFile("two-sum", "golang", "package main\n")
+	c := NewCache()
+	path, err := c.Scaffold("two-sum", "golang", "package main\n")
 	if err != nil {
-		t.Fatalf("ScaffoldFile: %v", err)
+		t.Fatalf("Scaffold: %v", err)
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -81,19 +82,20 @@ func TestScaffoldFile_CreatesWithSnippetWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestScaffoldFile_DoesNotOverwriteExisting(t *testing.T) {
+func TestScaffold_DoesNotOverwriteExisting(t *testing.T) {
 	redirectCacheDir(t)
 
-	path, err := ScaffoldFile("two-sum", "golang", "first\n")
+	c := NewCache()
+	path, err := c.Scaffold("two-sum", "golang", "first\n")
 	if err != nil {
-		t.Fatalf("first ScaffoldFile: %v", err)
+		t.Fatalf("first Scaffold: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("user-edit\n"), 0o644); err != nil {
 		t.Fatalf("simulate user edit: %v", err)
 	}
 
-	if _, err := ScaffoldFile("two-sum", "golang", "second\n"); err != nil {
-		t.Fatalf("second ScaffoldFile: %v", err)
+	if _, err := c.Scaffold("two-sum", "golang", "second\n"); err != nil {
+		t.Fatalf("second Scaffold: %v", err)
 	}
 	body, _ := os.ReadFile(path)
 	if string(body) != "user-edit\n" {
@@ -101,69 +103,76 @@ func TestScaffoldFile_DoesNotOverwriteExisting(t *testing.T) {
 	}
 }
 
-func TestScaffoldFile_RejectsBadSlug(t *testing.T) {
+func TestScaffold_RejectsBadSlug(t *testing.T) {
 	redirectCacheDir(t)
-	if _, err := ScaffoldFile("../escape", "golang", "x"); err == nil {
-		t.Error("ScaffoldFile accepted slug with traversal; expected rejection")
+	c := NewCache()
+	if _, err := c.Scaffold("../escape", "golang", "x"); err == nil {
+		t.Error("Scaffold accepted slug with traversal; expected rejection")
 	}
 }
 
-func TestExistingSolutionPath_MissingFileReturnsEmpty(t *testing.T) {
+func TestExistingPath_MissingFileReturnsEmpty(t *testing.T) {
 	redirectCacheDir(t)
-	if got := ExistingSolutionPath("two-sum", "golang"); got != "" {
-		t.Errorf("ExistingSolutionPath returned %q for missing file", got)
+	c := NewCache()
+	if got := c.ExistingPath("two-sum", "golang"); got != "" {
+		t.Errorf("ExistingPath returned %q for missing file", got)
 	}
 }
 
-func TestExistingSolutionPath_ExistingFileReturnsPath(t *testing.T) {
+func TestExistingPath_ExistingFileReturnsPath(t *testing.T) {
 	redirectCacheDir(t)
-	want, err := ScaffoldFile("two-sum", "golang", "package main")
+	c := NewCache()
+	want, err := c.Scaffold("two-sum", "golang", "package main")
 	if err != nil {
-		t.Fatalf("ScaffoldFile: %v", err)
+		t.Fatalf("Scaffold: %v", err)
 	}
-	if got := ExistingSolutionPath("two-sum", "golang"); got != want {
-		t.Errorf("ExistingSolutionPath = %q, want %q", got, want)
+	if got := c.ExistingPath("two-sum", "golang"); got != want {
+		t.Errorf("ExistingPath = %q, want %q", got, want)
 	}
 }
 
-func TestExistingSolutionPath_BlankLangReturnsEmpty(t *testing.T) {
+func TestExistingPath_BlankLangReturnsEmpty(t *testing.T) {
 	redirectCacheDir(t)
-	if got := ExistingSolutionPath("two-sum", ""); got != "" {
+	c := NewCache()
+	if got := c.ExistingPath("two-sum", ""); got != "" {
 		t.Errorf("expected blank lang to short-circuit; got %q", got)
 	}
 }
 
-func TestExistingSolutionPath_RejectsBadSlug(t *testing.T) {
+func TestExistingPath_RejectsBadSlug(t *testing.T) {
 	redirectCacheDir(t)
-	// SolutionPath returns an error for invalid slugs; ExistingSolutionPath
-	// must swallow it and return "" rather than propagating.
-	if got := ExistingSolutionPath("../escape", "golang"); got != "" {
-		t.Errorf("ExistingSolutionPath leaked invalid slug: %q", got)
+	c := NewCache()
+	// SolutionPath returns an error for invalid slugs; ExistingPath must
+	// swallow it and return "" rather than propagating.
+	if got := c.ExistingPath("../escape", "golang"); got != "" {
+		t.Errorf("ExistingPath leaked invalid slug: %q", got)
 	}
 }
 
-func TestSlugsWithSolutions_EmptyWhenCacheMissing(t *testing.T) {
+func TestSlugsWith_EmptyWhenCacheMissing(t *testing.T) {
 	redirectCacheDir(t)
-	got, err := SlugsWithSolutions()
+	c := NewCache()
+	got, err := c.SlugsWith()
 	if err != nil {
-		t.Fatalf("SlugsWithSolutions: %v", err)
+		t.Fatalf("SlugsWith: %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty set, got %v", got)
 	}
 }
 
-func TestSlugsWithSolutions_FindsScaffoldedSlugs(t *testing.T) {
+func TestSlugsWith_FindsScaffoldedSlugs(t *testing.T) {
 	redirectCacheDir(t)
-	if _, err := ScaffoldFile("two-sum", "golang", "x"); err != nil {
+	c := NewCache()
+	if _, err := c.Scaffold("two-sum", "golang", "x"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ScaffoldFile("3sum", "python3", "y"); err != nil {
+	if _, err := c.Scaffold("3sum", "python3", "y"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := SlugsWithSolutions()
+	got, err := c.SlugsWith()
 	if err != nil {
-		t.Fatalf("SlugsWithSolutions: %v", err)
+		t.Fatalf("SlugsWith: %v", err)
 	}
 	if !got["two-sum"] || !got["3sum"] {
 		t.Errorf("expected both slugs in set, got %v", got)
@@ -172,37 +181,40 @@ func TestSlugsWithSolutions_FindsScaffoldedSlugs(t *testing.T) {
 
 // An empty subdirectory under leetcode-anki/ shouldn't count as a draft —
 // guards against a future failed-write that left an empty dir behind.
-func TestSlugsWithSolutions_IgnoresEmptyDir(t *testing.T) {
+func TestSlugsWith_IgnoresEmptyDir(t *testing.T) {
 	dir := redirectCacheDir(t)
+	c := NewCache()
 	if err := os.MkdirAll(filepath.Join(dir, "leetcode-anki", "valid-slug"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := SlugsWithSolutions()
+	got, err := c.SlugsWith()
 	if err != nil {
-		t.Fatalf("SlugsWithSolutions: %v", err)
+		t.Fatalf("SlugsWith: %v", err)
 	}
 	if got["valid-slug"] {
 		t.Errorf("empty dir should not be reported: %v", got)
 	}
 }
 
-func TestHasAnySolution(t *testing.T) {
+func TestHasAny(t *testing.T) {
 	redirectCacheDir(t)
-	if HasAnySolution("two-sum") {
+	c := NewCache()
+	if c.HasAny("two-sum") {
 		t.Error("expected false before scaffold")
 	}
-	if _, err := ScaffoldFile("two-sum", "golang", "x"); err != nil {
+	if _, err := c.Scaffold("two-sum", "golang", "x"); err != nil {
 		t.Fatal(err)
 	}
-	if !HasAnySolution("two-sum") {
+	if !c.HasAny("two-sum") {
 		t.Error("expected true after scaffold")
 	}
 }
 
-func TestHasAnySolution_RejectsBadSlug(t *testing.T) {
+func TestHasAny_RejectsBadSlug(t *testing.T) {
 	redirectCacheDir(t)
-	if HasAnySolution("../escape") {
-		t.Error("HasAnySolution accepted bad slug")
+	c := NewCache()
+	if c.HasAny("../escape") {
+		t.Error("HasAny accepted bad slug")
 	}
 }
 

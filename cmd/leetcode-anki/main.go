@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"leetcode-anki/internal/auth"
+	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/tui"
 )
@@ -32,8 +33,10 @@ func main() {
 	}
 
 	client := leetcode.NewClient(creds)
+	cache := editor.NewCache()
+	runner := editor.NewRunner()
 
-	if err := tui.Run(ctx, client); err != nil {
+	if err := tui.Run(ctx, client, cache, runner); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)
 	}

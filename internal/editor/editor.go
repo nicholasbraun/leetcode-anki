@@ -166,35 +166,6 @@ func (c *Cache) HasAny(titleSlug string) bool {
 	return slugDirHasSolution(filepath.Join(dir, "leetcode-anki", titleSlug))
 }
 
-// defaultCache backs the package-level free functions. Will be removed once
-// all callers depend on Cache directly.
-var defaultCache = &Cache{}
-
-// ScaffoldFile is a thin wrapper around (*Cache).Scaffold for legacy callers.
-func ScaffoldFile(titleSlug, langSlug, snippet string) (string, error) {
-	return defaultCache.Scaffold(titleSlug, langSlug, snippet)
-}
-
-// ReadSolution is a thin wrapper around (*Cache).Read for legacy callers.
-func ReadSolution(path string) (string, error) {
-	return defaultCache.Read(path)
-}
-
-// ExistingSolutionPath is a thin wrapper around (*Cache).ExistingPath for legacy callers.
-func ExistingSolutionPath(titleSlug, langSlug string) string {
-	return defaultCache.ExistingPath(titleSlug, langSlug)
-}
-
-// SlugsWithSolutions is a thin wrapper around (*Cache).SlugsWith for legacy callers.
-func SlugsWithSolutions() (map[string]bool, error) {
-	return defaultCache.SlugsWith()
-}
-
-// HasAnySolution is a thin wrapper around (*Cache).HasAny for legacy callers.
-func HasAnySolution(titleSlug string) bool {
-	return defaultCache.HasAny(titleSlug)
-}
-
 // resolveEditor picks the user's editor: $VISUAL → $EDITOR → "vi".
 func resolveEditor() string {
 	if v := os.Getenv("VISUAL"); v != "" {
@@ -230,15 +201,6 @@ func (r *Runner) Open(path string) tea.Cmd {
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return EditorDoneMsg{Path: path, Err: err}
 	})
-}
-
-// defaultRunner backs the package-level free function. Will be removed once
-// all callers depend on Runner directly.
-var defaultRunner = &Runner{}
-
-// OpenInEditor is a thin wrapper around (*Runner).Open for legacy callers.
-func OpenInEditor(path string) tea.Cmd {
-	return defaultRunner.Open(path)
 }
 
 func slugDirHasSolution(slugDir string) bool {

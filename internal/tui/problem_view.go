@@ -15,6 +15,8 @@ import (
 )
 
 type problemView struct {
+	cache SolutionCache
+
 	vp               viewport.Model
 	rendered         string
 	chosenLang       string // langSlug
@@ -27,8 +29,9 @@ type problemView struct {
 	solutionRendered string
 }
 
-func newProblemView(width, height int) problemView {
+func newProblemView(cache SolutionCache, width, height int) problemView {
 	return problemView{
+		cache:      cache,
 		vp:         viewport.New(width, height),
 		solutionVP: viewport.New(0, 0),
 	}
@@ -37,7 +40,7 @@ func newProblemView(width, height int) problemView {
 func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasDraft bool, totalWidth, totalHeight int) error {
 	pv.status = status
 	pv.hasDraft = hasDraft
-	pv.chosenLang = pickDefaultLang(p.CodeSnippets, p.TitleSlug)
+	pv.chosenLang = pv.pickDefaultLang(p.CodeSnippets, p.TitleSlug)
 	pv.pickingLang = false
 	pv.langCursor = 0
 	return pv.renderForLayout(p, totalWidth, totalHeight)
@@ -47,7 +50,7 @@ func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, has
 // the current chosenLang and overall window dimensions. Used on initial load,
 // language switches, window resizes, and post-edit refreshes.
 func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, totalHeight int) error {
-	pv.scaffoldPath = editor.ExistingSolutionPath(p.TitleSlug, pv.chosenLang)
+	pv.scaffoldPath = pv.cache.ExistingPath(p.TitleSlug, pv.chosenLang)
 	descW, descH, solW, solH := problemDetailLayout(totalWidth, totalHeight)
 
 	md, err := render.HTMLToMarkdown(p.Content)
@@ -68,7 +71,7 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 	pv.solutionVP.Height = solH
 	if solW > 0 && pv.scaffoldPath != "" {
 		// Best-effort: render errors don't block the description pane.
-		sol, _ := renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
+		sol, _ := pv.renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
 		pv.solutionRendered = sol
 		pv.solutionVP.SetContent(sol)
 		pv.solutionVP.GotoTop()
@@ -82,12 +85,12 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 // renderCachedSolution loads the cached solution file for slug+langSlug
 // and renders it through glamour as a fenced code block so chroma applies
 // syntax highlighting. Returns "" (no error) when no file is cached.
-func renderCachedSolution(slug, langSlug string, width int) (string, error) {
-	path := editor.ExistingSolutionPath(slug, langSlug)
+func (pv *problemView) renderCachedSolution(slug, langSlug string, width int) (string, error) {
+	path := pv.cache.ExistingPath(slug, langSlug)
 	if path == "" {
 		return "", nil
 	}
-	code, err := editor.ReadSolution(path)
+	code, err := pv.cache.Read(path)
 	if err != nil {
 		return "", err
 	}
@@ -141,10 +144,10 @@ func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
 // pickDefaultLang chooses an initial language for a problem. A language with
 // an existing cached solution wins so the user lands back on whatever they
 // were drafting. Otherwise: golang → python3 → first available.
-func pickDefaultLang(snippets []leetcode.CodeSnippet, slug string) string {
+func (pv *problemView) pickDefaultLang(snippets []leetcode.CodeSnippet, slug string) string {
 	if slug != "" {
 		for _, s := range snippets {
-			if editor.ExistingSolutionPath(slug, s.LangSlug) != "" {
+			if pv.cache.ExistingPath(slug, s.LangSlug) != "" {
 				return s.LangSlug
 			}
 		}
@@ -216,13 +219,13 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case keyMatch(km, keys.Edit):
 			snippet := snippetFor(m.currentProblem, pv.chosenLang)
-			path, err := editor.ScaffoldFile(m.currentProblem.TitleSlug, pv.chosenLang, snippet)
+			path, err := m.cache.Scaffold(m.currentProblem.TitleSlug, pv.chosenLang, snippet)
 			if err != nil {
 				m.err = err
 				return m, nil
 			}
 			pv.scaffoldPath = path
-			return m, editor.OpenInEditor(path)
+			return m, m.editor.Open(path)
 		case keyMatch(km, keys.Run):
 			if pv.scaffoldPath == "" {
 				m.err = fmt.Errorf("nothing to run — press 'e' to write a solution first")
@@ -230,7 +233,7 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.runLoading = true
 			m.err = nil
-			cmd, cancel := runCodeCmd(m.ctx, m.client, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
+			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
 			m.cancelInflight = cancel
 			return m, cmd
 		case keyMatch(km, keys.Submit):
@@ -240,7 +243,7 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.submitLoading = true
 			m.err = nil
-			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
+			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
 			m.cancelInflight = cancel
 			return m, cmd
 		case keyMatch(km, keys.NextProb):

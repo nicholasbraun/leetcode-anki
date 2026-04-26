@@ -93,7 +93,7 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.currentList = it.fav
 					m.problemsLoading = true
 					m.err = nil
-					return m, loadProblemsCmd(m.ctx, m.client, it.fav.Slug)
+					return m, loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug)
 				}
 			}
 		}
