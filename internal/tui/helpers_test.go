@@ -147,6 +147,7 @@ type fakeReviews struct {
 	mu      sync.Mutex
 	records []recordCall
 	status  sr.Status
+	dueResp []sr.DueProblem
 	err     error
 }
 
@@ -169,4 +170,10 @@ func (f *fakeReviews) Status(_ context.Context, _ string, _ time.Time) (sr.Statu
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.status, f.err
+}
+
+func (f *fakeReviews) Due(_ context.Context, _ time.Time) ([]sr.DueProblem, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.dueResp, f.err
 }

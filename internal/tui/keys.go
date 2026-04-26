@@ -17,6 +17,7 @@ type keyMap struct {
 	Help        key.Binding
 	PreviewUp   key.Binding
 	PreviewDown key.Binding
+	Review      key.Binding
 }
 
 var keys = keyMap{
@@ -34,4 +35,5 @@ var keys = keyMap{
 	Help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	PreviewUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "preview up")),
 	PreviewDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "preview down")),
+	Review:      key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "review mode")),
 }

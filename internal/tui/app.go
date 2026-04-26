@@ -48,6 +48,11 @@ type Model struct {
 	listsReady   bool
 	listsLoading bool
 
+	// reviewMode indicates the problems screen is showing due Problems
+	// (Review Mode) rather than a Problem List's contents (Explore Mode).
+	// Set when entering via 'v' from the lists screen; cleared on Back.
+	reviewMode bool
+
 	// Problems screen
 	currentList     leetcode.FavoriteList
 	problems        list.Model
@@ -478,6 +483,37 @@ func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p
 	return cmd, cancel
 }
 
+// loadReviewCmd fetches the due Problems via sr.Reviews.Due and converts
+// them into the synthesized Question shape the problems screen expects.
+// Cold-cache loads can be slow (one SubmissionList per AC Problem) — the
+// timeout budget is widened accordingly.
+func loadReviewCmd(parent context.Context, reviews sr.Reviews, cache SolutionCache) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(parent, reviewTimeout)
+		defer cancel()
+
+		due, err := reviews.Due(ctx, time.Now())
+		if err != nil {
+			return errMsg{err}
+		}
+
+		ac := "AC"
+		questions := make([]leetcode.Question, 0, len(due))
+		for _, d := range due {
+			questions = append(questions, leetcode.Question{
+				TitleSlug:          d.TitleSlug,
+				Title:              d.Title,
+				QuestionFrontendID: d.FrontendID,
+				Difficulty:         d.Difficulty,
+				Status:             &ac,
+			})
+		}
+
+		drafts, _ := cache.SlugsWith()
+		return problemsLoadedMsg{questions: questions, drafts: drafts}
+	}
+}
+
 func submitCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
@@ -499,6 +535,7 @@ func submitCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache
 const (
 	defaultTimeout      = 30 * time.Second
 	submitTimeout       = 120 * time.Second
+	reviewTimeout       = 120 * time.Second
 	previewFetchTimeout = 15 * time.Second
 	previewDebounce     = 220 * time.Millisecond
 )

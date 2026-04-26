@@ -28,6 +28,23 @@ type Reviews interface {
 	// Used to render the "next review in X" badge in lists and to filter
 	// the problems screen in Review Mode (see Status.Due).
 	Status(ctx context.Context, slug string, now time.Time) (Status, error)
+
+	// Due returns every Problem currently due for review at `now`,
+	// sourced from the global UserProgress candidate set. This is the
+	// Review Mode entry point — the TUI calls it when the user presses
+	// the Review key on the lists screen.
+	Due(ctx context.Context, now time.Time) ([]DueProblem, error)
+}
+
+// DueProblem is one entry in the Review Mode list. Carries enough display
+// metadata for the TUI to render rows without re-fetching question detail.
+type DueProblem struct {
+	TitleSlug  string
+	Title      string
+	FrontendID string
+	Difficulty string
+	NextDue    time.Time
+	Reviews    int
 }
 
 // Status is the SR snapshot for a single Problem.
@@ -117,6 +134,50 @@ func (r *reviews) Status(ctx context.Context, slug string, now time.Time) (Statu
 		NextDue: r.sched.schedule(revs),
 		Reviews: len(revs),
 	}, nil
+}
+
+// Due pages through UserProgress, filters to AC Problems, computes Status
+// for each (cache-hit on warm slugs, fetch on cold), and keeps those whose
+// NextDue is at or before `now`. May make many API calls on a cold cache;
+// subsequent calls hit cache.
+func (r *reviews) Due(ctx context.Context, now time.Time) ([]DueProblem, error) {
+	const limit = 50
+	var allProgress []leetcode.ProgressQuestion
+	skip := 0
+	for {
+		page, total, err := r.lc.UserProgress(ctx, skip, limit)
+		if err != nil {
+			return nil, err
+		}
+		allProgress = append(allProgress, page...)
+		skip += len(page)
+		if len(page) == 0 || skip >= total {
+			break
+		}
+	}
+
+	out := make([]DueProblem, 0, len(allProgress))
+	for _, p := range allProgress {
+		if !p.LastAccepted {
+			continue
+		}
+		st, err := r.Status(ctx, p.TitleSlug, now)
+		if err != nil {
+			continue // skip the slug; don't fail the whole Due query
+		}
+		if !st.Due(now) {
+			continue
+		}
+		out = append(out, DueProblem{
+			TitleSlug:  p.TitleSlug,
+			Title:      p.Title,
+			FrontendID: p.FrontendID,
+			Difficulty: p.Difficulty,
+			NextDue:    st.NextDue,
+			Reviews:    st.Reviews,
+		})
+	}
+	return out, nil
 }
 
 // refreshSlug pulls the full submission timeline for a Problem and

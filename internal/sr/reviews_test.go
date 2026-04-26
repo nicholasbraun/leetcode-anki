@@ -205,6 +205,50 @@ func TestStatus_UsesCacheOnSecondCall(t *testing.T) {
 	}
 }
 
+// Due aggregates UserProgress + Status filtering. The test verifies that
+// only AC Problems whose Status.Due(now) is true end up in the result, and
+// that DueProblem carries display metadata so the TUI doesn't have to
+// re-fetch.
+func TestDue_FiltersToAcceptedAndDue(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fc := &fakeClient{
+		progressResp: []leetcode.ProgressQuestion{
+			// AC + first Submit was 2 days ago → 1-day interval → due.
+			{TitleSlug: "two-sum", Title: "Two Sum", FrontendID: "1", Difficulty: "EASY",
+				LastAccepted: true, LastSubmittedAt: at.AddDate(0, 0, -2)},
+			// AC + first Submit was just now → 1-day interval → NOT due.
+			{TitleSlug: "valid-anagram", Title: "Valid Anagram", FrontendID: "242", Difficulty: "EASY",
+				LastAccepted: true, LastSubmittedAt: at},
+			// Last result WA → never enters the SR rotation.
+			{TitleSlug: "broken", Title: "Broken", FrontendID: "999", Difficulty: "HARD",
+				LastAccepted: false, LastSubmittedAt: at.AddDate(0, 0, -10)},
+		},
+	}
+	r := newTestReviews(t, fc)
+
+	// Seed the cache so Status doesn't try to fetch SubmissionList for each.
+	r.cache.Slugs["two-sum"] = slugEntry{Submissions: []cachedSubmission{
+		{ID: "1", OccurredAt: at.AddDate(0, 0, -2), Accepted: true},
+	}}
+	r.cache.Slugs["valid-anagram"] = slugEntry{Submissions: []cachedSubmission{
+		{ID: "2", OccurredAt: at, Accepted: true},
+	}}
+
+	due, err := r.Due(context.Background(), at)
+	if err != nil {
+		t.Fatalf("Due: %v", err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("expected 1 due Problem, got %d: %+v", len(due), due)
+	}
+	if due[0].TitleSlug != "two-sum" {
+		t.Errorf("expected two-sum, got %q", due[0].TitleSlug)
+	}
+	if due[0].Title != "Two Sum" || due[0].FrontendID != "1" || due[0].Difficulty != "EASY" {
+		t.Errorf("missing display metadata: %+v", due[0])
+	}
+}
+
 func TestDue_OnlyTrackedAndPastNextDue(t *testing.T) {
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	if (Status{Tracked: false}).Due(at) {

@@ -82,6 +82,15 @@ func TestUserProgress_DecodesCapturedResponse(t *testing.T) {
 	if progress[0].TitleSlug != "two-sum" {
 		t.Errorf("TitleSlug = %q", progress[0].TitleSlug)
 	}
+	if progress[0].Title != "Two Sum" {
+		t.Errorf("Title = %q", progress[0].Title)
+	}
+	if progress[0].FrontendID != "1" {
+		t.Errorf("FrontendID = %q", progress[0].FrontendID)
+	}
+	if progress[0].Difficulty != "EASY" {
+		t.Errorf("Difficulty = %q", progress[0].Difficulty)
+	}
 	if !progress[0].LastAccepted {
 		t.Errorf("AC must yield LastAccepted=true")
 	}

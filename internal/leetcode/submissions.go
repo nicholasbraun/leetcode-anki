@@ -99,7 +99,9 @@ query userProgressQuestionList($filters: UserProgressQuestionListInput) {
     totalNum
     questions {
       frontendId
+      title
       titleSlug
+      difficulty
       lastSubmittedAt
       numSubmitted
       questionStatus
@@ -131,6 +133,9 @@ func (c *Client) UserProgress(ctx context.Context, skip, limit int) ([]ProgressQ
 			TotalNum  int `json:"totalNum"`
 			Questions []struct {
 				TitleSlug       string `json:"titleSlug"`
+				Title           string `json:"title"`
+				FrontendID      string `json:"frontendId"`
+				Difficulty      string `json:"difficulty"`
 				LastSubmittedAt string `json:"lastSubmittedAt"`
 				NumSubmitted    int    `json:"numSubmitted"`
 				LastResult      string `json:"lastResult"`
@@ -146,6 +151,9 @@ func (c *Client) UserProgress(ctx context.Context, skip, limit int) ([]ProgressQ
 		t, _ := time.Parse(time.RFC3339, w.LastSubmittedAt)
 		out = append(out, ProgressQuestion{
 			TitleSlug:       w.TitleSlug,
+			Title:           w.Title,
+			FrontendID:      w.FrontendID,
+			Difficulty:      w.Difficulty,
 			LastSubmittedAt: t,
 			NumSubmitted:    w.NumSubmitted,
 			LastAccepted:    w.LastResult == "AC",

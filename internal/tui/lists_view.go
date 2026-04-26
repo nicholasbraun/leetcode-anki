@@ -88,8 +88,14 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
+			case keyMatch(km, keys.Review):
+				m.reviewMode = true
+				m.problemsLoading = true
+				m.err = nil
+				return m, loadReviewCmd(m.ctx, m.reviews, m.cache)
 			case keyMatch(km, keys.Enter):
 				if it, ok := m.lists.SelectedItem().(listItem); ok {
+					m.reviewMode = false
 					m.currentList = it.fav
 					m.problemsLoading = true
 					m.err = nil
@@ -114,6 +120,7 @@ func viewListsView(m *Model) string {
 	foot := footer(w,
 		footerItem{"j/k", "move"},
 		footerItem{"enter", "open"},
+		footerItem{"v", "review"},
 		footerItem{"/", "filter"},
 		footerItem{"q", "quit"},
 	)

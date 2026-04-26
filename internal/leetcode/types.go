@@ -94,6 +94,9 @@ type Submission struct {
 // inclusion in the SR rotation.
 type ProgressQuestion struct {
 	TitleSlug       string
+	Title           string
+	FrontendID      string
+	Difficulty      string
 	LastSubmittedAt time.Time
 	NumSubmitted    int
 	LastAccepted    bool // lastResult == "AC"

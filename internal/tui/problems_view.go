@@ -143,6 +143,7 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
 			case keyMatch(km, keys.Back):
+				m.reviewMode = false
 				m.screen = screenLists
 				return m, nil
 			}
@@ -155,6 +156,7 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
 			case keyMatch(km, keys.Back):
+				m.reviewMode = false
 				m.screen = screenLists
 				return m, nil
 			case keyMatch(km, keys.Enter):
@@ -207,9 +209,16 @@ func viewProblemsView(m *Model) string {
 	}
 	listW, listH, previewW, _ := problemsLayout(w, m.height)
 
-	crumbs := breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name)
+	var crumbs string
+	var label string
 	count := len(m.problems.Items())
-	label := fmt.Sprintf("Problems  (%d)", count)
+	if m.reviewMode {
+		crumbs = breadcrumb(w, "leetcode-anki", "review mode")
+		label = fmt.Sprintf("Due for review  (%d)", count)
+	} else {
+		crumbs = breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name)
+		label = fmt.Sprintf("Problems  (%d)", count)
+	}
 	foot := footer(w,
 		footerItem{"j/k", "move"},
 		footerItem{"enter", "open"},
