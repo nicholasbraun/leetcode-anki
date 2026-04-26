@@ -212,6 +212,34 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	}
 }
 
+// TestProblemRowDifficultyRightAligned guards two row-render invariants:
+// the difficulty word's right edge stays on the same column whether or
+// not the title was truncated, and no difficulty icon (◔/◑/●) leaks back
+// into the row. The truncated case used to push one cell further right
+// because titleMax and the gap formula targeted different right edges.
+func TestProblemRowDifficultyRightAligned(t *testing.T) {
+	const width = 50
+	qs := []leetcode.Question{
+		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a", Difficulty: "Easy"},
+		{QuestionFrontendID: "424", Title: "Longest Repeating Character Replacement", TitleSlug: "lrcr", Difficulty: "Medium"},
+	}
+	l := newProblemsList(width, 20, qs, "test", nil)
+	d := problemsDelegate{}
+
+	var short, long strings.Builder
+	d.Render(&short, l, 0, l.Items()[0])
+	d.Render(&long, l, 1, l.Items()[1])
+
+	if sw, lw := lipgloss.Width(short.String()), lipgloss.Width(long.String()); sw != lw {
+		t.Errorf("row widths differ: short=%d long=%d (truncation must not shift the difficulty column)", sw, lw)
+	}
+	for _, glyph := range []string{"◔", "◑", "●"} {
+		if strings.Contains(short.String(), glyph) || strings.Contains(long.String(), glyph) {
+			t.Errorf("row contains stripped difficulty glyph %q", glyph)
+		}
+	}
+}
+
 // TestRowGlyphRendersSingleCell guards the column-alignment invariant:
 // problemsDelegate.Render assumes every styled status glyph is exactly
 // one cell wide. Banner styles like successStyle add horizontal padding

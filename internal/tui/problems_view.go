@@ -98,9 +98,12 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	}
 
 	// Available width for the title is whatever's left after the fixed
-	// columns and a 2-space minimum gap before the difficulty.
+	// columns, a 2-space minimum gap, and the 1-cell right margin the
+	// gap formula below reserves. Keeping these consistent ensures the
+	// difficulty's right edge lands on the same column whether or not
+	// the title was truncated.
 	leftConsumed := 1 + lipgloss.Width(cursor) + lipgloss.Width(statusCell) + lipgloss.Width(num) + 2
-	titleMax := width - leftConsumed - diffW - 2
+	titleMax := width - leftConsumed - diffW - 3
 	if titleMax < 8 {
 		titleMax = 8
 	}
