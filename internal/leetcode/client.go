@@ -1,0 +1,178 @@
+package leetcode
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"leetcode-anki/internal/auth"
+)
+
+const (
+	// BaseURL is the leetcode.com origin used for REST endpoints and Referer headers.
+	BaseURL = "https://leetcode.com"
+	// GraphQLURL is the single endpoint all GraphQL queries POST to.
+	GraphQLURL = "https://leetcode.com/graphql/"
+	// UserAgent is sent on every request. LeetCode rejects requests that claim
+	// no UA at all; the value isn't otherwise validated server-side.
+	UserAgent = "Mozilla/5.0"
+)
+
+// httpDoer is the subset of *http.Client we depend on. Tests inject fakes
+// against this interface; production code uses *http.Client.
+type httpDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+// Client is the LeetCode GraphQL+REST client. It centralises auth headers so
+// individual API methods can't forget to attach them.
+type Client struct {
+	creds *auth.Credentials
+	http  httpDoer
+}
+
+// NewClient builds a Client that talks to leetcode.com using a default HTTP
+// client with a 30s per-request timeout.
+func NewClient(creds *auth.Credentials) *Client {
+	return &Client{
+		creds: creds,
+		http:  &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// newClientWithDoer is the test seam for injecting a fake httpDoer.
+func newClientWithDoer(creds *auth.Credentials, doer httpDoer) *Client {
+	return &Client{creds: creds, http: doer}
+}
+
+type graphQLRequest struct {
+	Query         string         `json:"query"`
+	Variables     map[string]any `json:"variables"`
+	OperationName string         `json:"operationName"`
+}
+
+type graphQLError struct {
+	Message string `json:"message"`
+}
+
+type graphQLEnvelope struct {
+	Data   json.RawMessage `json:"data"`
+	Errors []graphQLError  `json:"errors,omitempty"`
+}
+
+// doGraphQL POSTs a GraphQL operation and returns the unwrapped `data` payload
+// (or an error describing a transport, status, or top-level GraphQL error).
+// The caller decodes the data shape it expects.
+func (c *Client) doGraphQL(ctx context.Context, opName, query string, vars map[string]any, referer string) (json.RawMessage, error) {
+	body := graphQLRequest{Query: query, Variables: vars, OperationName: opName}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, GraphQLURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+	c.setHeaders(req, referer)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, statusError(resp.StatusCode, raw)
+	}
+
+	var env graphQLEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	if len(env.Errors) > 0 {
+		return nil, fmt.Errorf("graphql error: %s", env.Errors[0].Message)
+	}
+	return env.Data, nil
+}
+
+// doREST executes a REST request, decoding the JSON response into out if it
+// is non-nil and the body is non-empty. Status codes outside 2xx return an
+// error built by statusError (no body included).
+func (c *Client) doREST(ctx context.Context, method, url string, in any, out any, referer string) error {
+	var body io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return fmt.Errorf("marshal: %w", err)
+		}
+		body = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	c.setHeaders(req, referer)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return statusError(resp.StatusCode, raw)
+	}
+	if out == nil {
+		return nil
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, out)
+}
+
+// statusError builds a user-facing error for a non-2xx response.
+//
+// We deliberately omit the response body. LeetCode's error pages can be many
+// KB of HTML and may contain server-side debug, request-correlation IDs, or
+// echoes of CSRF tokens — none of which belong in a TUI banner. Callers that
+// need the body for diagnostics should enable debug logging instead.
+func statusError(code int, body []byte) error {
+	if debugLog {
+		// Hook for future --debug flag; for now this branch is unreachable.
+		return fmt.Errorf("status %d: %s", code, string(body))
+	}
+	return fmt.Errorf("status %d", code)
+}
+
+// debugLog is a package-level toggle reserved for a future --debug flag that
+// will write raw response bodies to a per-session log file. Until that flag
+// exists, statusError suppresses bodies unconditionally.
+var debugLog = false
+
+// setHeaders attaches the headers that authenticated leetcode.com endpoints
+// require (Cookie, x-csrftoken, Referer, User-Agent). Centralising this here
+// means individual API methods cannot forget one and silently 401.
+func (c *Client) setHeaders(req *http.Request, referer string) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("x-csrftoken", c.creds.CSRF)
+	req.Header.Set("Cookie", fmt.Sprintf("LEETCODE_SESSION=%s; csrftoken=%s", c.creds.Session, c.creds.CSRF))
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+}
