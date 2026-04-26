@@ -162,17 +162,22 @@ func (s *previewState) contentForCurrent() string {
 }
 
 // renderProblemBody produces the title + difficulty + glamour-rendered
-// description shown by both the full-detail screen and the preview pane.
-// Kept here so both consumers stay in sync as the markdown pipeline evolves.
+// description shown in the preview pane. Title and difficulty are styled
+// outside the markdown pipeline because glamour escapes ANSI codes embedded
+// in its input — so a lipgloss-styled difficulty inside the markdown would
+// render as literal escape sequences.
 func renderProblemBody(p *leetcode.ProblemDetail, width int) (string, error) {
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
 		md = p.Content
 	}
-	header := fmt.Sprintf("# %s. %s\n\n%s\n\n",
-		p.QuestionFrontendID, p.Title,
-		difficultyStyle(p.Difficulty).Render(p.Difficulty))
-	return render.MarkdownToTerminal(header+md, width)
+	body, err := render.MarkdownToTerminal(md, width)
+	if err != nil {
+		return "", err
+	}
+	title := headerStyle.Render(fmt.Sprintf("%s. %s", p.QuestionFrontendID, p.Title))
+	difficulty := difficultyStyle(p.Difficulty).Render(p.Difficulty)
+	return title + "\n" + difficulty + "\n\n" + body, nil
 }
 
 // previewTickMsg fires after the debounce window. The slug is the one that

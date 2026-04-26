@@ -32,10 +32,7 @@ func (pv *problemView) setProblem(p *leetcode.ProblemDetail, width int) error {
 	if err != nil {
 		md = p.Content
 	}
-	header := fmt.Sprintf("# %s. %s\n\n%s\n\n",
-		p.QuestionFrontendID, p.Title,
-		difficultyStyle(p.Difficulty).Render(p.Difficulty))
-	out, err := render.MarkdownToTerminal(header+md, width-4)
+	out, err := render.MarkdownToTerminal(md, width-4)
 	if err != nil {
 		return err
 	}
@@ -198,6 +195,9 @@ func viewProblemView(m *Model) string {
 	}
 
 	header := headerStyle.Render(fmt.Sprintf("%s. %s", m.currentProblem.QuestionFrontendID, m.currentProblem.Title))
+	difficulty := lipgloss.NewStyle().Padding(0, 1).Render(
+		difficultyStyle(m.currentProblem.Difficulty).Render(m.currentProblem.Difficulty),
+	)
 	lang := dimStyle.Render(fmt.Sprintf("language: %s", pv.chosenLang))
 	scaffold := ""
 	if pv.scaffoldPath != "" {
@@ -215,6 +215,7 @@ func viewProblemView(m *Model) string {
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
+		difficulty,
 		lang+scaffold,
 		body,
 		help,
