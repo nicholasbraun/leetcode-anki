@@ -40,6 +40,8 @@ func TestProblemDetailLayout(t *testing.T) {
 
 func TestStatusBadge(t *testing.T) {
 	ac := "ACCEPTED"
+	acShort := "AC"
+	finish := "FINISH"
 	tried := "TRIED"
 	notStarted := "NOT_STARTED"
 
@@ -51,6 +53,9 @@ func TestStatusBadge(t *testing.T) {
 		wantText  string
 	}{
 		{"accepted", &ac, false, false, "Solved"},
+		{"AC short", &acShort, false, false, "Solved"},
+		{"FINISH variant", &finish, false, false, "Solved"},
+		{"accepted with draft still solved", &ac, true, false, "Solved"},
 		{"tried", &tried, false, false, "In progress"},
 		{"draft only", nil, true, false, "In progress"},
 		{"tried and draft", &tried, true, false, "In progress"},

@@ -28,18 +28,37 @@ func (p problemItem) Title() string {
 // A local draft (file on disk) is treated as in-progress even when the
 // server status is NOT_STARTED — the user has clearly started working.
 func statusGlyph(status *string, hasLocalDraft bool) string {
-	if status != nil {
-		switch strings.ToUpper(*status) {
-		case "AC", "ACCEPTED":
-			return successStyle.Render("✓")
-		case "TRIED":
-			return inProgressStyle.Render("✎")
-		}
+	if isAccepted(status) {
+		return successStyle.Render("✓")
 	}
-	if hasLocalDraft {
+	if isTried(status) || hasLocalDraft {
 		return inProgressStyle.Render("✎")
 	}
 	return "·"
+}
+
+// LeetCode's status enum has churned across endpoints — accepted problems
+// have been observed as "AC", "ACCEPTED", and "FINISH". Match all three.
+func isAccepted(status *string) bool {
+	if status == nil {
+		return false
+	}
+	switch strings.ToUpper(*status) {
+	case "AC", "ACCEPTED", "FINISH", "SOLVED":
+		return true
+	}
+	return false
+}
+
+func isTried(status *string) bool {
+	if status == nil {
+		return false
+	}
+	switch strings.ToUpper(*status) {
+	case "TRIED", "ATTEMPTED", "NOTAC":
+		return true
+	}
+	return false
 }
 
 func (p problemItem) Description() string {

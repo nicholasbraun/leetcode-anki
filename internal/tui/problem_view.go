@@ -325,15 +325,10 @@ func viewProblemView(m *Model) string {
 // detail screen, or "" when the problem is untouched. The same signals
 // drive the lists-screen glyph (statusGlyph) so the two stay in sync.
 func statusBadge(status *string, hasLocalDraft bool) string {
-	if status != nil {
-		switch strings.ToUpper(*status) {
-		case "AC", "ACCEPTED":
-			return successStyle.Render("✓ Solved")
-		case "TRIED":
-			return inProgressStyle.Render("✎ In progress")
-		}
+	if isAccepted(status) {
+		return successStyle.Render("✓ Solved")
 	}
-	if hasLocalDraft {
+	if isTried(status) || hasLocalDraft {
 		return inProgressStyle.Render("✎ In progress")
 	}
 	return ""

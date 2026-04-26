@@ -119,6 +119,8 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 
 func TestProblemItemTitleStatusGlyph(t *testing.T) {
 	ac := "ACCEPTED"
+	acShort := "AC"
+	finish := "FINISH"
 	tried := "TRIED"
 	notStarted := "NOT_STARTED"
 
@@ -129,6 +131,9 @@ func TestProblemItemTitleStatusGlyph(t *testing.T) {
 		wantGlyph  string
 	}{
 		{"accepted", &ac, false, "✓"},
+		{"AC short", &acShort, false, "✓"},
+		{"FINISH variant", &finish, false, "✓"},
+		{"accepted with draft still solved", &ac, true, "✓"},
 		{"tried", &tried, false, "✎"},
 		{"draft only", nil, true, "✎"},
 		{"tried and draft", &tried, true, "✎"},
