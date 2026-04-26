@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -18,29 +19,33 @@ import (
 // in. The state methods are deliberately pure (no I/O) so the cursor →
 // debounce → fetch → render pipeline is unit-testable without Bubble Tea.
 type previewState struct {
-	cache         map[string]*leetcode.ProblemDetail
-	highlighted   string
-	highlightTitle string
+	cache           map[string]*leetcode.ProblemDetail
+	highlighted     string
+	highlightTitle  string
 	highlightLocked bool
-	pending       string
-	err           error
-	vp            viewport.Model
-	width         int
-	height        int
-	ready         bool
+	highlightAcRate float64
+	pending         string
+	err             error
+	vp              viewport.Model
+	width           int
+	height          int
+	ready           bool
 }
 
 // cursorMoved records the slug now under the cursor and reports whether the
 // caller should schedule a debounced fetch. Returns false when nothing
 // changed, when the slug is already cached, or when the problem is premium-
-// locked (we can't fetch its content anyway).
-func (s *previewState) cursorMoved(slug, title string, paidOnly bool) bool {
+// locked (we can't fetch its content anyway). acRate is the AC percentage
+// for the slug, threaded through because ProblemDetail itself doesn't
+// carry it — it lives only on the Question summary.
+func (s *previewState) cursorMoved(slug, title string, paidOnly bool, acRate float64) bool {
 	if slug == s.highlighted {
 		return false
 	}
 	s.highlighted = slug
 	s.highlightTitle = title
 	s.highlightLocked = paidOnly
+	s.highlightAcRate = acRate
 	s.err = nil
 	s.refreshContent()
 	if slug == "" || paidOnly {
@@ -142,31 +147,26 @@ func (s *previewState) contentForCurrent() string {
 		return ""
 	}
 	if s.highlightLocked {
-		return dimStyle.Render("Premium problem (locked) — preview unavailable.")
+		return dimStyle.Render(glyphPaid + " premium problem — open in browser to view")
 	}
 	if p := s.cache[s.highlighted]; p != nil {
-		body, err := renderProblemBody(p, s.width-2)
+		body, err := renderProblemBody(p, s.highlightAcRate, s.width-2)
 		if err != nil {
 			return errorStyle.Render("render error: " + err.Error())
 		}
 		return body
 	}
 	if s.err != nil {
-		return errorStyle.Render("could not load preview: " + truncateErr(s.err.Error(), 200))
+		return errorStyle.Render("failed to load: " + truncateErr(s.err.Error(), 200))
 	}
-	label := s.highlightTitle
-	if label == "" {
-		label = s.highlighted
-	}
-	return dimStyle.Render(fmt.Sprintf("loading description for %s…", label))
+	return loadingStyle.Render(glyphSpin + " loading…")
 }
 
-// renderProblemBody produces the title + difficulty + glamour-rendered
-// description shown in the preview pane. Title and difficulty are styled
-// outside the markdown pipeline because glamour escapes ANSI codes embedded
-// in its input — so a lipgloss-styled difficulty inside the markdown would
-// render as literal escape sequences.
-func renderProblemBody(p *leetcode.ProblemDetail, width int) (string, error) {
+// renderProblemBody produces the title + difficulty header, the
+// glamour-rendered description, and a tags/ac footer for the preview pane.
+// Title and difficulty are styled outside the markdown pipeline because
+// glamour escapes ANSI codes embedded in its input.
+func renderProblemBody(p *leetcode.ProblemDetail, acRate float64, width int) (string, error) {
 	md, err := render.HTMLToMarkdown(p.Content)
 	if err != nil {
 		md = p.Content
@@ -175,9 +175,23 @@ func renderProblemBody(p *leetcode.ProblemDetail, width int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	title := headerStyle.Render(fmt.Sprintf("%s. %s", p.QuestionFrontendID, p.Title))
-	difficulty := difficultyStyle(p.Difficulty).Render(p.Difficulty)
-	return title + "\n" + difficulty + "\n\n" + body, nil
+	header := headerStyle.Render(p.Title) + "  " +
+		dimStyle.Render("#"+p.QuestionFrontendID) + "   " +
+		difficultyLabel(p.Difficulty)
+
+	footer := ""
+	if len(p.TopicTags) > 0 {
+		names := make([]string, 0, len(p.TopicTags))
+		for _, t := range p.TopicTags {
+			names = append(names, t.Slug)
+		}
+		footer += "\n" + dimStyle.Render("tags  ") + dimStyle.Render(strings.Join(names, " · "))
+	}
+	if acRate > 0 {
+		footer += "\n" + dimStyle.Render(fmt.Sprintf("ac    %.1f%%", acRate))
+	}
+
+	return header + "\n\n" + body + footer, nil
 }
 
 // previewTickMsg fires after the debounce window. The slug is the one that

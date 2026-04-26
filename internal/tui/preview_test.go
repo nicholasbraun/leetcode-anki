@@ -28,7 +28,7 @@ func sampleDetail(slug string) *leetcode.ProblemDetail {
 
 func TestPreviewCursorMovedTriggersFetchForUncached(t *testing.T) {
 	s := newTestPreview(t)
-	if !s.cursorMoved("two-sum", "Two Sum", false) {
+	if !s.cursorMoved("two-sum", "Two Sum", false, 50.0) {
 		t.Fatal("expected fetch to be needed")
 	}
 	if s.pending != "two-sum" {
@@ -39,7 +39,7 @@ func TestPreviewCursorMovedTriggersFetchForUncached(t *testing.T) {
 func TestPreviewCursorMovedSkipsFetchWhenCached(t *testing.T) {
 	s := newTestPreview(t)
 	s.cache = map[string]*leetcode.ProblemDetail{"two-sum": sampleDetail("two-sum")}
-	if s.cursorMoved("two-sum", "Two Sum", false) {
+	if s.cursorMoved("two-sum", "Two Sum", false, 50.0) {
 		t.Fatal("expected no fetch (already cached)")
 	}
 	if !strings.Contains(s.view(), "Two Sum") {
@@ -49,28 +49,28 @@ func TestPreviewCursorMovedSkipsFetchWhenCached(t *testing.T) {
 
 func TestPreviewCursorMovedShortCircuitsPremium(t *testing.T) {
 	s := newTestPreview(t)
-	if s.cursorMoved("locked", "Locked Problem", true) {
+	if s.cursorMoved("locked", "Locked Problem", true, 0) {
 		t.Fatal("expected no fetch for premium")
 	}
-	if !strings.Contains(s.view(), "Premium") {
+	if !strings.Contains(s.view(), "premium") {
 		t.Errorf("view missing premium notice: %q", s.view())
 	}
 }
 
 func TestPreviewCursorMovedSameSlugNoop(t *testing.T) {
 	s := newTestPreview(t)
-	if !s.cursorMoved("two-sum", "Two Sum", false) {
+	if !s.cursorMoved("two-sum", "Two Sum", false, 50.0) {
 		t.Fatal("setup: expected first move to need a fetch")
 	}
-	if s.cursorMoved("two-sum", "Two Sum", false) {
+	if s.cursorMoved("two-sum", "Two Sum", false, 50.0) {
 		t.Fatal("expected no fetch when slug unchanged")
 	}
 }
 
 func TestPreviewTickFiredCancelledByLaterMove(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("a", "A", false)
-	s.cursorMoved("b", "B", false)
+	s.cursorMoved("a", "A", false, 0)
+	s.cursorMoved("b", "B", false, 0)
 	if s.tickFired("a") {
 		t.Fatal("expected stale tick for 'a' to be discarded")
 	}
@@ -78,7 +78,7 @@ func TestPreviewTickFiredCancelledByLaterMove(t *testing.T) {
 
 func TestPreviewTickFiredMatchesPending(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("a", "A", false)
+	s.cursorMoved("a", "A", false, 0)
 	if !s.tickFired("a") {
 		t.Fatal("expected tick for current slug to fire fetch")
 	}
@@ -86,7 +86,7 @@ func TestPreviewTickFiredMatchesPending(t *testing.T) {
 
 func TestPreviewFetchReturnedForCurrentSlug(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("two-sum", "Two Sum", false)
+	s.cursorMoved("two-sum", "Two Sum", false, 50.0)
 	if !s.fetchReturned("two-sum", sampleDetail("two-sum"), nil) {
 		t.Fatal("expected fetch result to drive view (still highlighted)")
 	}
@@ -97,8 +97,8 @@ func TestPreviewFetchReturnedForCurrentSlug(t *testing.T) {
 
 func TestPreviewFetchReturnedStaleStillCaches(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("a", "A", false)
-	s.cursorMoved("b", "B", false)
+	s.cursorMoved("a", "A", false, 0)
+	s.cursorMoved("b", "B", false, 0)
 	if s.fetchReturned("a", sampleDetail("a"), nil) {
 		t.Fatal("expected stale fetch to not drive view")
 	}
@@ -109,11 +109,11 @@ func TestPreviewFetchReturnedStaleStillCaches(t *testing.T) {
 
 func TestPreviewFetchReturnedErrorShownForCurrent(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("two-sum", "Two Sum", false)
+	s.cursorMoved("two-sum", "Two Sum", false, 0)
 	if !s.fetchReturned("two-sum", nil, errors.New("network down")) {
 		t.Fatal("expected error to drive view")
 	}
-	if !strings.Contains(s.view(), "could not load") {
+	if !strings.Contains(s.view(), "failed to load") {
 		t.Errorf("view missing error notice: %q", s.view())
 	}
 }
@@ -125,10 +125,10 @@ func TestPreviewViewEmptyWithoutHighlight(t *testing.T) {
 	}
 }
 
-func TestPreviewLoadingPlaceholderUsesTitle(t *testing.T) {
+func TestPreviewLoadingPlaceholder(t *testing.T) {
 	s := newTestPreview(t)
-	s.cursorMoved("two-sum", "Two Sum", false)
-	if !strings.Contains(s.view(), "loading description for Two Sum") {
+	s.cursorMoved("two-sum", "Two Sum", false, 0)
+	if !strings.Contains(s.view(), "loading") {
 		t.Errorf("view missing loading placeholder: %q", s.view())
 	}
 }

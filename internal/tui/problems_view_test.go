@@ -117,7 +117,7 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	}
 }
 
-func TestProblemItemTitleStatusGlyph(t *testing.T) {
+func TestRowGlyph(t *testing.T) {
 	ac := "ACCEPTED"
 	acShort := "AC"
 	finish := "FINISH"
@@ -125,33 +125,28 @@ func TestProblemItemTitleStatusGlyph(t *testing.T) {
 	notStarted := "NOT_STARTED"
 
 	cases := []struct {
-		name       string
-		status     *string
-		draft      bool
-		wantGlyph  string
+		name      string
+		status    *string
+		draft     bool
+		paid      bool
+		wantGlyph string
 	}{
-		{"accepted", &ac, false, "✓"},
-		{"AC short", &acShort, false, "✓"},
-		{"FINISH variant", &finish, false, "✓"},
-		{"accepted with draft still solved", &ac, true, "✓"},
-		{"tried", &tried, false, "✎"},
-		{"draft only", nil, true, "✎"},
-		{"tried and draft", &tried, true, "✎"},
-		{"not_started no draft", &notStarted, false, "·"},
-		{"nil no draft", nil, false, "·"},
+		{"accepted", &ac, false, false, "✓"},
+		{"AC short", &acShort, false, false, "✓"},
+		{"FINISH variant", &finish, false, false, "✓"},
+		{"accepted with draft still solved", &ac, true, false, "✓"},
+		{"tried", &tried, false, false, "✎"},
+		{"draft only", nil, true, false, "✎"},
+		{"tried and draft", &tried, true, false, "✎"},
+		{"not_started no draft", &notStarted, false, false, "·"},
+		{"nil no draft", nil, false, false, "·"},
+		{"premium overrides everything", &ac, true, true, "🔒"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			it := problemItem{
-				q: leetcode.Question{
-					QuestionFrontendID: "1",
-					Title:              "Two Sum",
-					Status:             tc.status,
-				},
-				hasLocalDraft: tc.draft,
-			}
-			if got := it.Title(); !strings.Contains(got, tc.wantGlyph) {
-				t.Errorf("Title()=%q, expected glyph %q", got, tc.wantGlyph)
+			got := rowGlyph(tc.status, tc.draft, tc.paid)
+			if !strings.Contains(got, tc.wantGlyph) {
+				t.Errorf("rowGlyph()=%q, expected glyph %q", got, tc.wantGlyph)
 			}
 		})
 	}
