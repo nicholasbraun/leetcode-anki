@@ -395,22 +395,23 @@ func runStatus(m *Model) string {
 // a cached solution yet. Lists the available language templates so the user
 // can hit `l` to pick one and `e` to scaffold + edit.
 func renderScaffoldPrompt(p *leetcode.ProblemDetail) string {
-	var b strings.Builder
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("press  ") + footerKeyStyle.Render("l") + dimStyle.Render("  to pick a language\n"))
-	b.WriteString(dimStyle.Render("press  ") + footerKeyStyle.Render("e") + dimStyle.Render("  to scaffold + edit\n"))
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("available templates\n"))
+	rows := []string{
+		"",
+		dimStyle.Render("press  ") + footerKeyStyle.Render("l") + dimStyle.Render("  to pick a language"),
+		dimStyle.Render("press  ") + footerKeyStyle.Render("e") + dimStyle.Render("  to scaffold + edit"),
+		"",
+		dimStyle.Render("available templates"),
+	}
 	const maxRows = 6
 	for i, s := range p.CodeSnippets {
 		if i >= maxRows {
 			extra := len(p.CodeSnippets) - maxRows
-			b.WriteString(dimStyle.Render(fmt.Sprintf("  ⋮  +%d more\n", extra)))
+			rows = append(rows, dimStyle.Render(fmt.Sprintf("  ⋮  +%d more", extra)))
 			break
 		}
-		b.WriteString(dimStyle.Render("  • " + s.LangSlug + "\n"))
+		rows = append(rows, dimStyle.Render("  • "+s.LangSlug))
 	}
-	return b.String()
+	return strings.Join(rows, "\n")
 }
 
 // statusBadge returns a styled "✓ Solved" / "✎ In progress" label, or "" when
