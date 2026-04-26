@@ -141,3 +141,82 @@ func TestExistingSolutionPath_RejectsBadSlug(t *testing.T) {
 		t.Errorf("ExistingSolutionPath leaked invalid slug: %q", got)
 	}
 }
+
+func TestSlugsWithSolutions_EmptyWhenCacheMissing(t *testing.T) {
+	redirectCacheDir(t)
+	got, err := SlugsWithSolutions()
+	if err != nil {
+		t.Fatalf("SlugsWithSolutions: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty set, got %v", got)
+	}
+}
+
+func TestSlugsWithSolutions_FindsScaffoldedSlugs(t *testing.T) {
+	redirectCacheDir(t)
+	if _, err := ScaffoldFile("two-sum", "golang", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ScaffoldFile("3sum", "python3", "y"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := SlugsWithSolutions()
+	if err != nil {
+		t.Fatalf("SlugsWithSolutions: %v", err)
+	}
+	if !got["two-sum"] || !got["3sum"] {
+		t.Errorf("expected both slugs in set, got %v", got)
+	}
+}
+
+// An empty subdirectory under leetcode-anki/ shouldn't count as a draft —
+// guards against a future failed-write that left an empty dir behind.
+func TestSlugsWithSolutions_IgnoresEmptyDir(t *testing.T) {
+	dir := redirectCacheDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, "leetcode-anki", "valid-slug"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := SlugsWithSolutions()
+	if err != nil {
+		t.Fatalf("SlugsWithSolutions: %v", err)
+	}
+	if got["valid-slug"] {
+		t.Errorf("empty dir should not be reported: %v", got)
+	}
+}
+
+func TestHasAnySolution(t *testing.T) {
+	redirectCacheDir(t)
+	if HasAnySolution("two-sum") {
+		t.Error("expected false before scaffold")
+	}
+	if _, err := ScaffoldFile("two-sum", "golang", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if !HasAnySolution("two-sum") {
+		t.Error("expected true after scaffold")
+	}
+}
+
+func TestHasAnySolution_RejectsBadSlug(t *testing.T) {
+	redirectCacheDir(t)
+	if HasAnySolution("../escape") {
+		t.Error("HasAnySolution accepted bad slug")
+	}
+}
+
+func TestChromaLang(t *testing.T) {
+	cases := map[string]string{
+		"golang":  "go",
+		"python3": "python",
+		"rust":    "rust",
+		"java":    "java",
+		"klingon": "klingon",
+	}
+	for in, want := range cases {
+		if got := ChromaLang(in); got != want {
+			t.Errorf("ChromaLang(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

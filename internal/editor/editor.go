@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -144,4 +145,75 @@ func ReadSolution(path string) (string, error) {
 		return "", fmt.Errorf("read solution: %w", err)
 	}
 	return string(b), nil
+}
+
+// SlugsWithSolutions returns the set of title slugs that have at least one
+// cached solution file. A single ReadDir of the cache root, so callers can
+// stamp every row of the lists screen without an os.Stat per row.
+func SlugsWithSolutions() (map[string]bool, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(dir, "leetcode-anki")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]bool{}, nil
+		}
+		return nil, err
+	}
+	out := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || !validSlug.MatchString(e.Name()) {
+			continue
+		}
+		if slugDirHasSolution(filepath.Join(root, e.Name())) {
+			out[e.Name()] = true
+		}
+	}
+	return out, nil
+}
+
+// HasAnySolution reports whether the slug has at least one cached solution
+// file in any language.
+func HasAnySolution(titleSlug string) bool {
+	if !validSlug.MatchString(titleSlug) {
+		return false
+	}
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return false
+	}
+	return slugDirHasSolution(filepath.Join(dir, "leetcode-anki", titleSlug))
+}
+
+func slugDirHasSolution(slugDir string) bool {
+	entries, err := os.ReadDir(slugDir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "solution.") {
+			return true
+		}
+	}
+	return false
+}
+
+// ChromaLang maps a LeetCode langSlug to the lexer name expected inside a
+// glamour-rendered fenced code block. Slugs not in the table are returned
+// unchanged — chroma falls back to plain text on unknown lexers.
+func ChromaLang(langSlug string) string {
+	if c, ok := chromaByLangSlug[langSlug]; ok {
+		return c
+	}
+	return langSlug
+}
+
+var chromaByLangSlug = map[string]string{
+	"golang":    "go",
+	"python3":   "python",
+	"mssql":     "tsql",
+	"oraclesql": "plsql",
 }
