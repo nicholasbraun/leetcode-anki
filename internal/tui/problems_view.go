@@ -88,7 +88,7 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	statusCell := glyph + " "
 
 	num := fmt.Sprintf("%5s", it.q.QuestionFrontendID+".")
-	diff := difficultyGlyph(it.q.Difficulty) + "  " + difficultyLabel(it.q.Difficulty)
+	diff := difficultyLabel(it.q.Difficulty)
 	diffW := lipgloss.Width(diff)
 
 	titleStr := it.q.Title

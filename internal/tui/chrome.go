@@ -106,20 +106,6 @@ func footer(width int, items ...footerItem) string {
 	return b.String()
 }
 
-// difficultyGlyph maps "EASY"/"MEDIUM"/"HARD" (any case) to the colored
-// ◔ ◑ ● glyph. Unknown values render as a dimmed bullet.
-func difficultyGlyph(d string) string {
-	switch strings.ToUpper(d) {
-	case "EASY":
-		return easyStyle.Render(glyphEasy)
-	case "MEDIUM":
-		return mediumStyle.Render(glyphMedium)
-	case "HARD":
-		return hardStyle.Render(glyphHard)
-	}
-	return dimStyle.Render("·")
-}
-
 // difficultyLabel renders the lowercase difficulty word in its color. Unknown
 // values render dim.
 func difficultyLabel(d string) string {

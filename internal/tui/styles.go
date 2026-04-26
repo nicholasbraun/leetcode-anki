@@ -3,9 +3,6 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 const (
-	glyphEasy   = "◔"
-	glyphMedium = "◑"
-	glyphHard   = "●"
 	glyphCursor = "▸"
 	glyphSolved = "✓"
 	glyphTried  = "~"
