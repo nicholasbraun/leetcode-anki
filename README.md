@@ -1,13 +1,35 @@
 # leetcode-anki
 
-A terminal UI (Bubble Tea) for working through LeetCode problems and retaining
+A terminal UI for working through LeetCode problems and retaining
 what you've solved through spaced-repetition reviews. Walk a problem list, read
-the prompt, write a solution in your `$EDITOR`, run it against the examples,
+the description, write a solution in your `$EDITOR`, run it against the examples,
 submit for a verdict. Once a problem is accepted it joins the SR rotation and
 shows up in **Review Mode** when due.
 
-The canonical domain vocabulary lives in [CONTEXT.md](CONTEXT.md) — read that
-first if you intend to contribute.
+## About
+
+I built this for three reasons:
+
+- **Stay sharp on DSA in the LLM era.** When an LLM can one-shot most of the
+  coding work I do day-to-day, the part that decays fastest is the part I no
+  longer practice: choosing the right data structure, recognising the shape of
+  a problem, reasoning about complexity without an autocomplete in the way.
+  LeetCode is the cheapest way to keep that muscle alive — and spaced
+  repetition is the cheapest way to keep what I've already learned from
+  fading.
+- **Use Neovim, not the LeetCode web editor.** I don't want to write code in a
+  browser textarea. I don't want to copy-paste solutions back and forth. The
+  TUI hands the file to `$EDITOR` (Neovim, in my case) and ships the result
+  straight to LeetCode's `interpret_solution` and `/submit/` endpoints — same
+  verdicts, same submission history, no context switch.
+- **Learn to work effectively with agentic coding tools.** This is also a
+  deliberate exploration of how to drive Claude Code productively while still
+  shipping code I'd be happy to put in front of a reviewer at work. The
+  conventions in [CLAUDE.md](CLAUDE.md) — TDD on every change, atomic
+  conventional commits, explicit per-commit approval, comments-on-the-WHY,
+  interfaces at every external boundary, a [CONTEXT.md](CONTEXT.md) ubiquitous
+  language — are the guardrails that keep an agent's output at production
+  quality instead of "demoware that compiles."
 
 ## Setup
 
@@ -49,12 +71,12 @@ leetcode-anki --logout
 
 ### On-disk layout
 
-| Path | Contents |
-| --- | --- |
-| `$UserConfigDir/leetcode-anki/creds.json` | session + CSRF cookies (mode 0600) |
-| `$UserConfigDir/leetcode-anki/sr.json` | spaced-repetition cache (per-slug submission timeline) |
+| Path                                                | Contents                                                                                 |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `$UserConfigDir/leetcode-anki/creds.json`           | session + CSRF cookies (mode 0600)                                                       |
+| `$UserConfigDir/leetcode-anki/sr.json`              | spaced-repetition cache (per-slug submission timeline)                                   |
 | `$UserCacheDir/leetcode-anki/<slug>/solution.<ext>` | scaffolded solution files; never overwritten on re-scaffold so resumed work is preserved |
-| `$UserCacheDir/leetcode-anki/debug.log` | raw GraphQL responses, only when `LEETCODE_DEBUG=1` |
+| `$UserCacheDir/leetcode-anki/debug.log`             | raw GraphQL responses, only when `LEETCODE_DEBUG=1`                                      |
 
 ## Usage
 
@@ -62,20 +84,20 @@ The TUI walks four screens: `lists → problems → problem → result`.
 
 ### Keys
 
-| Key | Action |
-| --- | --- |
-| `↑`/`k`, `↓`/`j` | move |
-| `enter` | select |
-| `esc` / `backspace` | back (also cancels an in-flight run/submit) |
-| `q` / `ctrl+c` | quit |
-| `e` | edit current problem's solution in `$EDITOR` |
-| `r` | run against example testcases (`interpret_solution`) |
-| `s` | submit (`/submit/`) |
-| `l` | cycle language for the current problem |
-| `n` / `p` | next / previous problem in the current list |
-| `pgup`/`ctrl+u`, `pgdn`/`ctrl+d` | scroll the problem-list preview pane |
-| `v` | enter Review Mode from the lists screen |
-| `?` | help |
+| Key                              | Action                                               |
+| -------------------------------- | ---------------------------------------------------- |
+| `↑`/`k`, `↓`/`j`                 | move                                                 |
+| `enter`                          | select                                               |
+| `esc` / `backspace`              | back (also cancels an in-flight run/submit)          |
+| `q` / `ctrl+c`                   | quit                                                 |
+| `e`                              | edit current problem's solution in `$EDITOR`         |
+| `r`                              | run against example testcases (`interpret_solution`) |
+| `s`                              | submit (`/submit/`)                                  |
+| `l`                              | cycle language for the current problem               |
+| `n` / `p`                        | next / previous problem in the current list          |
+| `pgup`/`ctrl+u`, `pgdn`/`ctrl+d` | scroll the problem-list preview pane                 |
+| `v`                              | enter Review Mode from the lists screen              |
+| `?`                              | help                                                 |
 
 ### Explore Mode vs Review Mode
 
@@ -88,20 +110,25 @@ A problem enters the SR rotation on its **first accepted submit** — runs do
 not count. Subsequent attempts in any language fold into the same rotation
 (the problem is the SR unit, not the `(problem, language)` pair).
 
-### Optional grading tags
+### Grading an Accepted submit
 
-Submission notes can carry an explicit Anki-style grade so the scheduler does
-not have to assume "Accepted == Good":
+When a submit comes back **Accepted**, a modal opens on the result screen
+asking how confidently you solved it. Each option shows its predicted next
+due-date so you can see what you're picking:
 
-```
-[anki:1]   Again
-[anki:2]   Hard
-[anki:3]   Good (default; same as no tag)
-[anki:4]   Easy
-```
+| Key | Rating                                  |
+| --- | --------------------------------------- |
+| `1` | Again                                   |
+| `2` | Hard                                    |
+| `3` | Good (default — `enter` without moving) |
+| `4` | Easy                                    |
 
-Notes are stored on LeetCode's submission record (`updateSubmissionNote`), so
-your grading history travels with your account, not this binary.
+`↑/↓` move the cursor, `enter` commits the highlighted choice, `esc`
+dismisses the modal (no rating recorded — the scheduler treats that as
+"Good"). The chosen rating is written to LeetCode's submission record as an
+`[anki:N]` tag in the submission note (`updateSubmissionNote`), so your
+grading history travels with your account, not this binary. Wipe the local
+SR cache and Review Mode rebuilds the timeline from those notes.
 
 ## Architecture
 
