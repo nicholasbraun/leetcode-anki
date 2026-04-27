@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -10,36 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 )
-
-type fakeClient struct {
-	details  map[string]*leetcode.ProblemDetail
-	problems map[string][]Problem
-	calls    []string
-}
-
-func (f *fakeClient) MyFavoriteLists(ctx context.Context) ([]leetcode.FavoriteList, error) {
-	return nil, nil
-}
-func (f *fakeClient) FavoriteQuestionList(ctx context.Context, slug string, skip, limit int) (*leetcode.FavoriteQuestionListResult, error) {
-	if qs, ok := f.problems[slug]; ok {
-		return &leetcode.FavoriteQuestionListResult{Questions: qs}, nil
-	}
-	return &leetcode.FavoriteQuestionListResult{}, nil
-}
-func (f *fakeClient) ProblemDetail(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error) {
-	f.calls = append(f.calls, titleSlug)
-	if d, ok := f.details[titleSlug]; ok {
-		return d, nil
-	}
-	return nil, errors.New("not found")
-}
-func (f *fakeClient) InterpretSolution(ctx context.Context, slug, lang, qid, code, in string) (*leetcode.RunResult, error) {
-	return nil, nil
-}
-func (f *fakeClient) Submit(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error) {
-	return nil, nil
-}
 
 func loadFakeProblems(t *testing.T, m *Model, qs []Problem) {
 	t.Helper()
@@ -51,7 +22,7 @@ func loadFakeProblems(t *testing.T, m *Model, qs []Problem) {
 }
 
 func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
-	fc := &fakeClient{details: map[string]*leetcode.ProblemDetail{
+	fc := &leetcodefake.Fake{Details: map[string]*leetcode.ProblemDetail{
 		"a": sampleDetail("a"), "b": sampleDetail("b"),
 		"c": sampleDetail("c"), "d": sampleDetail("d"),
 	}}
@@ -84,13 +55,13 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 	if _, ok := extractMsg[previewLoadedMsg](cmd); !ok {
 		t.Fatal("expected previewLoadedMsg in dispatch batch")
 	}
-	if len(fc.calls) != 1 || fc.calls[0] != "d" {
-		t.Errorf("ProblemDetail calls = %v, want [d]", fc.calls)
+	if len(fc.DetailCalls) != 1 || fc.DetailCalls[0] != "d" {
+		t.Errorf("ProblemDetail calls = %v, want [d]", fc.DetailCalls)
 	}
 }
 
 func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
-	fc := &fakeClient{details: map[string]*leetcode.ProblemDetail{"a": sampleDetail("a")}}
+	fc := &leetcodefake.Fake{Details: map[string]*leetcode.ProblemDetail{"a": sampleDetail("a")}}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
@@ -106,10 +77,10 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 		t.Fatal("expected previewLoadedMsg in dispatch batch")
 	}
 	_, _ = m.Update(loaded)
-	if len(fc.calls) == 0 || fc.calls[0] != "a" {
-		t.Fatalf("expected one preview fetch for 'a', got %v", fc.calls)
+	if len(fc.DetailCalls) == 0 || fc.DetailCalls[0] != "a" {
+		t.Fatalf("expected one preview fetch for 'a', got %v", fc.DetailCalls)
 	}
-	fc.calls = nil
+	fc.DetailCalls = nil
 
 	// Enter on the same slug must not re-fetch.
 	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -119,8 +90,8 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	if _, ok := extractMsg[problemLoadedMsg](cmd); !ok {
 		t.Fatal("expected cache-served problemLoadedMsg")
 	}
-	if len(fc.calls) != 0 {
-		t.Errorf("expected no ProblemDetail calls on cache hit, got %v", fc.calls)
+	if len(fc.DetailCalls) != 0 {
+		t.Errorf("expected no ProblemDetail calls on cache hit, got %v", fc.DetailCalls)
 	}
 }
 
@@ -160,7 +131,7 @@ func TestRowGlyph(t *testing.T) {
 }
 
 func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
@@ -182,7 +153,7 @@ func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 }
 
 func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	loadFakeProblems(t, m, []Problem{
@@ -211,7 +182,7 @@ func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 // the rating modal owns the Record call so the rating reflects the
 // user's actual grade, not the system's "Accepted = Good" guess.
 func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	loadFakeProblems(t, m, []Problem{
@@ -233,7 +204,7 @@ func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 }
 
 func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "Premium", TitleSlug: "p", PaidOnly: true},
@@ -245,8 +216,8 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("expected premium tick to be discarded, got cmd")
 	}
-	if len(fc.calls) != 0 {
-		t.Errorf("expected zero ProblemDetail calls for premium, got %v", fc.calls)
+	if len(fc.DetailCalls) != 0 {
+		t.Errorf("expected zero ProblemDetail calls for premium, got %v", fc.DetailCalls)
 	}
 }
 

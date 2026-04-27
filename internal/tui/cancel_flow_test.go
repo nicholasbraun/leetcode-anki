@@ -9,39 +9,33 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 )
 
-// blockingClient wraps fakeClient: InterpretSolution and Submit block on
-// the request context until it's cancelled. Lets the cancel-flow tests
-// observe what the in-flight goroutine sees when esc/ctrl+c fires.
-type blockingClient struct {
-	fakeClient
-	started chan struct{}
-	done    chan struct{}
-	err     error
-}
-
-func newBlockingClient() *blockingClient {
-	return &blockingClient{
-		started: make(chan struct{}),
-		done:    make(chan struct{}),
+// blockingFake builds a leetcodefake.Fake whose InterpretSolution and Submit
+// hooks block until ctx is cancelled. Returns the fake plus the channels
+// the test uses to coordinate: started fires once the call is in flight,
+// done fires once it returns, and *err captures the ctx error it observed.
+func blockingFake() (fake *leetcodefake.Fake, started, done chan struct{}, err *error) {
+	started = make(chan struct{})
+	done = make(chan struct{})
+	err = new(error)
+	fake = &leetcodefake.Fake{}
+	fake.RunHook = func(ctx context.Context, _, _, _, _, _ string) (*leetcode.RunResult, error) {
+		close(started)
+		<-ctx.Done()
+		*err = ctx.Err()
+		close(done)
+		return nil, ctx.Err()
 	}
-}
-
-func (b *blockingClient) InterpretSolution(ctx context.Context, slug, lang, qid, code, in string) (*leetcode.RunResult, error) {
-	close(b.started)
-	<-ctx.Done()
-	b.err = ctx.Err()
-	close(b.done)
-	return nil, ctx.Err()
-}
-
-func (b *blockingClient) Submit(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error) {
-	close(b.started)
-	<-ctx.Done()
-	b.err = ctx.Err()
-	close(b.done)
-	return nil, ctx.Err()
+	fake.SubmitHook = func(ctx context.Context, _, _, _, _ string) (*leetcode.SubmitResult, error) {
+		close(started)
+		<-ctx.Done()
+		*err = ctx.Err()
+		close(done)
+		return nil, ctx.Err()
+	}
+	return fake, started, done, err
 }
 
 // keyEsc is the synthetic esc key event.
@@ -55,8 +49,8 @@ var keySubmit = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}
 // stale runResultMsg later.
 func TestEsc_CancelsInflightRun(t *testing.T) {
 	cache := newFakeCache()
-	bc := newBlockingClient()
-	m := onProblemScreen("two-sum", cache, newFakeEditor(), &fakeClient{})
+	bc, started, done, observedErr := blockingFake()
+	m := onProblemScreen("two-sum", cache, newFakeEditor(), &leetcodefake.Fake{})
 	m.client = bc
 	m.problem.solutionPath = cache.writeSolution("two-sum", "golang", "package main\n")
 
@@ -80,7 +74,7 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 	// otherwise we'd be racing the cancellation against the goroutine
 	// scheduling and could spuriously assert before the request started.
 	select {
-	case <-bc.started:
+	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("InterpretSolution was never invoked")
 	}
@@ -93,12 +87,12 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 
 	// The blocked InterpretSolution must observe ctx.Canceled and return.
 	select {
-	case <-bc.done:
+	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("InterpretSolution did not return after esc; cancel didn't propagate")
 	}
-	if !errors.Is(bc.err, context.Canceled) {
-		t.Errorf("InterpretSolution saw %v, want context.Canceled", bc.err)
+	if !errors.Is(*observedErr, context.Canceled) {
+		t.Errorf("InterpretSolution saw %v, want context.Canceled", *observedErr)
 	}
 
 	wg.Wait()
@@ -109,8 +103,8 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 // caught by testing the other.
 func TestEsc_CancelsInflightSubmit(t *testing.T) {
 	cache := newFakeCache()
-	bc := newBlockingClient()
-	m := onProblemScreen("two-sum", cache, newFakeEditor(), &fakeClient{})
+	bc, started, done, observedErr := blockingFake()
+	m := onProblemScreen("two-sum", cache, newFakeEditor(), &leetcodefake.Fake{})
 	m.client = bc
 	m.problem.solutionPath = cache.writeSolution("two-sum", "golang", "package main\n")
 
@@ -125,7 +119,7 @@ func TestEsc_CancelsInflightSubmit(t *testing.T) {
 	wg, _ := startBatch(cmd)
 
 	select {
-	case <-bc.started:
+	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("Submit was never invoked")
 	}
@@ -133,12 +127,12 @@ func TestEsc_CancelsInflightSubmit(t *testing.T) {
 	_, _ = m.Update(keyEsc)
 
 	select {
-	case <-bc.done:
+	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Submit did not return after esc")
 	}
-	if !errors.Is(bc.err, context.Canceled) {
-		t.Errorf("Submit saw %v, want context.Canceled", bc.err)
+	if !errors.Is(*observedErr, context.Canceled) {
+		t.Errorf("Submit saw %v, want context.Canceled", *observedErr)
 	}
 	wg.Wait()
 }

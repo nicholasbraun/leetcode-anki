@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 	"leetcode-anki/internal/sr"
 )
 
@@ -16,7 +17,7 @@ import (
 // load command — Review Mode is now a sticky session flag, not an entry
 // into a synthetic "globally due" list.
 func TestV_OnListsScreen_TogglesReviewMode(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -46,7 +47,7 @@ func TestV_OnListsScreen_TogglesReviewMode(t *testing.T) {
 // Pressing Enter on a list while reviewMode is on must keep the flag set
 // so the loaded problems are filtered to due ones.
 func TestEnter_InReviewMode_PreservesMode(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -70,7 +71,7 @@ func TestEnter_InReviewMode_PreservesMode(t *testing.T) {
 // Pressing Back from the problems screen returns to lists with
 // reviewMode unchanged — the mode is sticky across navigation.
 func TestBack_FromProblems_PreservesReviewMode(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -93,7 +94,7 @@ func TestBack_FromProblems_PreservesReviewMode(t *testing.T) {
 // rebuilds the visible list synchronously — no re-fetch.
 func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -140,7 +141,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 // silently fail to filter.
 func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{problems: map[string][]Problem{
+	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
@@ -170,7 +171,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 // the Problems that are present in dueSlugs.
 func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -203,7 +204,7 @@ func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
 
 // In Explore Mode, problemsLoadedMsg without dueSlugs renders the full list.
 func TestProblemsLoaded_NonReview_NoFilter(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -229,7 +230,7 @@ func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
 	tried := "TRIED"
 	now := time.Now()
 
-	fc := &fakeClient{problems: map[string][]Problem{
+	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {
 			{TitleSlug: "a", Status: &ac},    // AC + due
 			{TitleSlug: "b", Status: &tried}, // not AC — skip
@@ -267,7 +268,7 @@ func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
 // calls at all, so Explore-Mode users don't pay for the SR fan-out.
 func TestLoadProblemsCmd_NoDueSlugs_WhenExploreMode(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{problems: map[string][]Problem{
+	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
@@ -288,7 +289,7 @@ func TestLoadProblemsCmd_NoDueSlugs_WhenExploreMode(t *testing.T) {
 // pane would leave the user wondering whether the load failed.
 func TestReviewMode_EmptyState(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40
@@ -312,7 +313,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 // In Review Mode, the breadcrumb must say "review mode" so the user knows
 // they're not browsing a Problem List.
 func TestReviewMode_BreadcrumbReflectsMode(t *testing.T) {
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 	m.width, m.height = 140, 40

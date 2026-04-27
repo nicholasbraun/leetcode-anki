@@ -9,15 +9,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 )
 
 // modalSetup wires a Model into "user just submitted slug a, modal is open".
 // Returns the Model and the fakeReviews so tests can assert Record calls.
-func modalSetup(t *testing.T) (*Model, *fakeReviews, *fakeClient) {
+func modalSetup(t *testing.T) (*Model, *fakeReviews, *leetcodefake.Fake) {
 	t.Helper()
 	tomorrow := time.Now().AddDate(0, 0, 1)
 	in6 := time.Now().AddDate(0, 0, 6)
-	fc := &fakeClient{details: map[string]*leetcode.ProblemDetail{
+	fc := &leetcodefake.Fake{Details: map[string]*leetcode.ProblemDetail{
 		"a": sampleDetail("a"), "b": sampleDetail("b"), "c": sampleDetail("c"),
 	}}
 	fr := newFakeReviews()
@@ -294,7 +295,7 @@ func TestRejectedShowsStandardResultScreen(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			fc := &fakeClient{}
+			fc := &leetcodefake.Fake{}
 			fr := newFakeReviews()
 			m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
 			loadFakeProblems(t, m, []Problem{

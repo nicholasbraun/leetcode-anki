@@ -10,6 +10,7 @@ import (
 
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 )
 
 // keyEdit is the synthetic key event that updateProblemView interprets as
@@ -36,7 +37,7 @@ func problemDetailFor(slug string) *leetcode.ProblemDetail {
 
 // onProblemScreen builds a Model parked on the problem detail screen for
 // the given slug, ready to receive Edit/Run/Submit key events.
-func onProblemScreen(slug string, cache SolutionCache, ed Editor, fc *fakeClient) *Model {
+func onProblemScreen(slug string, cache SolutionCache, ed Editor, fc *leetcodefake.Fake) *Model {
 	m := NewModel(context.Background(), fc, cache, ed, newFakeReviews())
 	m.width, m.height = 140, 40
 	m.currentProblem = problemDetailFor(slug)
@@ -50,7 +51,7 @@ func onProblemScreen(slug string, cache SolutionCache, ed Editor, fc *fakeClient
 func TestEditFlow_ScaffoldsAndOpens(t *testing.T) {
 	cache := newFakeCache()
 	ed := newFakeEditor()
-	m := onProblemScreen("two-sum", cache, ed, &fakeClient{})
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
 
 	_, cmd := m.Update(keyEdit)
 	if cmd == nil {
@@ -80,7 +81,7 @@ func TestEditFlow_ScaffoldsAndOpens(t *testing.T) {
 func TestEditorDoneMsg_MarksSolution(t *testing.T) {
 	cache := newFakeCache()
 	ed := newFakeEditor()
-	m := onProblemScreen("two-sum", cache, ed, &fakeClient{})
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
 
 	// Seed the problems list so the row-glyph sync path runs.
 	loadFakeProblems(t, m, []Problem{
@@ -115,7 +116,7 @@ func TestEditorDoneMsg_MarksSolution(t *testing.T) {
 func TestEditorDoneMsg_WithError(t *testing.T) {
 	cache := newFakeCache()
 	ed := newFakeEditor()
-	m := onProblemScreen("two-sum", cache, ed, &fakeClient{})
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
 
 	editorErr := errors.New("editor exited 1")
 	_, _ = m.Update(editor.EditorDoneMsg{Path: "/fake/two-sum/solution.golang", Err: editorErr})
@@ -136,7 +137,7 @@ func TestEditorDoneMsg_WithError(t *testing.T) {
 func TestRun_ReadsLatestSolution(t *testing.T) {
 	cache := newFakeCache()
 	ed := newFakeEditor()
-	fc := &fakeClient{}
+	fc := &leetcodefake.Fake{}
 	m := onProblemScreen("two-sum", cache, ed, fc)
 
 	path := cache.writeSolution("two-sum", "golang", "package main\nfunc twoSum() {}\n")
