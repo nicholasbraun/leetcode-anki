@@ -10,7 +10,7 @@ import (
 )
 
 // TestContract_Live runs the contract suite against a real *leetcode.Client
-// authenticated as the dedicated test account. Skipped (with setup
+// authenticated as the dedicated test account. Fails (with setup
 // instructions) when no test creds are available — see CLAUDE.md Tests
 // section for the one-time account setup.
 //
