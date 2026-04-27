@@ -77,6 +77,13 @@ var (
 
 	loadingStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
+
+	loadingStyleRun = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214"))
+
+	loadingStyleSubmit = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("75"))
 )
 
 func difficultyStyle(d string) lipgloss.Style {
