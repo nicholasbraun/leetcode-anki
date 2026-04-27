@@ -109,6 +109,55 @@ func TestUserProgress_DecodesCapturedResponse(t *testing.T) {
 	}
 }
 
+// A malformed `timestamp` field used to silently parse to 0 and surface as
+// time.Unix(0, 0) — Jan 1, 1970 — which polluted the SR scheduler with
+// "always overdue" entries. Skip the row instead so the caller never sees
+// it.
+func TestSubmissionList_SkipsRowWithBadTimestamp(t *testing.T) {
+	d := &routedDoer{byOp: map[string]string{
+		"submissionList": `{"data":{"questionSubmissionList":{"lastKey":null,"hasNext":false,"submissions":[
+			{"id":"good","status":10,"statusDisplay":"Accepted","lang":"golang","timestamp":"1700000000","notes":"","flagType":"WHITE"},
+			{"id":"bad","status":10,"statusDisplay":"Accepted","lang":"golang","timestamp":"not-a-number","notes":"","flagType":"WHITE"}
+		]}}}`,
+	}}
+	c := newClientWithDoer(&auth.Credentials{Session: "s", CSRF: "c"}, d)
+
+	subs, _, err := c.SubmissionList(context.Background(), "two-sum", "", 20)
+	if err != nil {
+		t.Fatalf("SubmissionList: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 submission (bad timestamp dropped), got %d: %+v", len(subs), subs)
+	}
+	if subs[0].ID != "good" {
+		t.Errorf("expected the good row to survive, got %+v", subs[0])
+	}
+}
+
+// Same shape as the timestamp test but for UserProgress, whose row carries
+// LastSubmittedAt as RFC3339. An empty / malformed value used to parse to a
+// zero time.Time, again giving the scheduler a 1-Jan-AD-1 due-date.
+func TestUserProgress_SkipsRowWithBadLastSubmittedAt(t *testing.T) {
+	d := &routedDoer{byOp: map[string]string{
+		"userProgressQuestionList": `{"data":{"userProgressQuestionList":{"totalNum":2,"questions":[
+			{"frontendId":"1","title":"Good","titleSlug":"good","difficulty":"EASY","lastSubmittedAt":"2026-04-26T14:34:04+00:00","numSubmitted":1,"questionStatus":"SOLVED","lastResult":"AC","topicTags":[]},
+			{"frontendId":"2","title":"Bad","titleSlug":"bad","difficulty":"EASY","lastSubmittedAt":"","numSubmitted":1,"questionStatus":"SOLVED","lastResult":"AC","topicTags":[]}
+		]}}}`,
+	}}
+	c := newClientWithDoer(&auth.Credentials{Session: "s", CSRF: "c"}, d)
+
+	progress, _, err := c.UserProgress(context.Background(), 0, 50)
+	if err != nil {
+		t.Fatalf("UserProgress: %v", err)
+	}
+	if len(progress) != 1 {
+		t.Fatalf("expected 1 progress row (bad lastSubmittedAt dropped), got %d: %+v", len(progress), progress)
+	}
+	if progress[0].TitleSlug != "good" {
+		t.Errorf("expected the good row to survive, got %+v", progress[0])
+	}
+}
+
 func TestSubmissionList_PaginatesViaLastKey(t *testing.T) {
 	d := &routedDoer{byOp: map[string]string{
 		"submissionList": `{"data":{"questionSubmissionList":{"lastKey":"cursor-abc","hasNext":true,"submissions":[

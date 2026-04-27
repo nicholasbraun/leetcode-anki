@@ -75,7 +75,14 @@ func (c *Client) SubmissionList(ctx context.Context, slug, nextKey string, limit
 
 	out := make([]Submission, 0, len(wrap.QuestionSubmissionList.Submissions))
 	for _, w := range wrap.QuestionSubmissionList.Submissions {
-		ts, _ := strconv.ParseInt(w.Timestamp, 10, 64)
+		ts, err := strconv.ParseInt(w.Timestamp, 10, 64)
+		if err != nil {
+			// Drop the row rather than emit time.Unix(0, 0). A 1970 baseline
+			// would mark every Submission "always overdue" and corrupt the SR
+			// schedule.
+			appendDebugLog("submissionList:bad-timestamp", []byte(fmt.Sprintf("id=%s timestamp=%q", w.ID, w.Timestamp)))
+			continue
+		}
 		out = append(out, Submission{
 			ID:         w.ID,
 			OccurredAt: time.Unix(ts, 0),
@@ -148,7 +155,14 @@ func (c *Client) UserProgress(ctx context.Context, skip, limit int) ([]ProgressQ
 
 	out := make([]ProgressQuestion, 0, len(wrap.UserProgressQuestionList.Questions))
 	for _, w := range wrap.UserProgressQuestionList.Questions {
-		t, _ := time.Parse(time.RFC3339, w.LastSubmittedAt)
+		t, err := time.Parse(time.RFC3339, w.LastSubmittedAt)
+		if err != nil {
+			// Same reasoning as SubmissionList: a zero time.Time would feed
+			// the SR scheduler a 0001-01-01 baseline and pin the row as
+			// permanently overdue.
+			appendDebugLog("userProgressQuestionList:bad-lastSubmittedAt", []byte(fmt.Sprintf("slug=%s lastSubmittedAt=%q", w.TitleSlug, w.LastSubmittedAt)))
+			continue
+		}
 		out = append(out, ProgressQuestion{
 			TitleSlug:       w.TitleSlug,
 			Title:           w.Title,
