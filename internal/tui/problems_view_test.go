@@ -132,24 +132,24 @@ func TestRowGlyph(t *testing.T) {
 	cases := []struct {
 		name      string
 		status    *string
-		draft     bool
+		solution  bool
 		paid      bool
 		wantGlyph string
 	}{
 		{"accepted", &ac, false, false, "✓"},
 		{"AC short", &acShort, false, false, "✓"},
 		{"FINISH variant", &finish, false, false, "✓"},
-		{"accepted with draft still solved", &ac, true, false, "✓"},
+		{"accepted with solution still solved", &ac, true, false, "✓"},
 		{"tried", &tried, false, false, "~"},
-		{"draft only", nil, true, false, "~"},
-		{"tried and draft", &tried, true, false, "~"},
-		{"not_started no draft", &notStarted, false, false, "·"},
-		{"nil no draft", nil, false, false, "·"},
+		{"solution only", nil, true, false, "~"},
+		{"tried and solution", &tried, true, false, "~"},
+		{"not_started no solution", &notStarted, false, false, "·"},
+		{"nil no solution", nil, false, false, "·"},
 		{"premium overrides everything", &ac, true, true, "$"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := rowGlyph(tc.status, tc.draft, tc.paid)
+			got := rowGlyph(tc.status, tc.solution, tc.paid)
 			if !strings.Contains(got, tc.wantGlyph) {
 				t.Errorf("rowGlyph()=%q, expected glyph %q", got, tc.wantGlyph)
 			}
@@ -284,20 +284,20 @@ func TestRowGlyphRendersSingleCell(t *testing.T) {
 	ac := "ACCEPTED"
 	tried := "TRIED"
 	cases := []struct {
-		name   string
-		status *string
-		draft  bool
-		paid   bool
+		name     string
+		status   *string
+		solution bool
+		paid     bool
 	}{
 		{"solved", &ac, false, false},
 		{"tried", &tried, false, false},
-		{"draft only", nil, true, false},
+		{"solution only", nil, true, false},
 		{"paid", nil, false, true},
 		{"default", nil, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := rowGlyph(tc.status, tc.draft, tc.paid)
+			got := rowGlyph(tc.status, tc.solution, tc.paid)
 			if w := lipgloss.Width(got); w != 1 {
 				t.Errorf("rowGlyph width=%d, want 1; raw=%q", w, got)
 			}

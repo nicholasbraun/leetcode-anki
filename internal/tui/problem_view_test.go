@@ -39,23 +39,23 @@ func TestStatusBadge(t *testing.T) {
 	cases := []struct {
 		name      string
 		status    *string
-		draft     bool
+		solution  bool
 		wantEmpty bool
 		wantText  string
 	}{
 		{"accepted", &ac, false, false, "Solved"},
 		{"AC short", &acShort, false, false, "Solved"},
 		{"FINISH variant", &finish, false, false, "Solved"},
-		{"accepted with draft still solved", &ac, true, false, "Solved"},
+		{"accepted with solution still solved", &ac, true, false, "Solved"},
 		{"tried", &tried, false, false, "In progress"},
-		{"draft only", nil, true, false, "In progress"},
-		{"tried and draft", &tried, true, false, "In progress"},
-		{"not_started no draft", &notStarted, false, true, ""},
-		{"nil no draft", nil, false, true, ""},
+		{"solution only", nil, true, false, "In progress"},
+		{"tried and solution", &tried, true, false, "In progress"},
+		{"not_started no solution", &notStarted, false, true, ""},
+		{"nil no solution", nil, false, true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := statusBadge(tc.status, tc.draft)
+			got := statusBadge(tc.status, tc.solution)
 			if tc.wantEmpty {
 				if got != "" {
 					t.Errorf("statusBadge=%q, want empty", got)

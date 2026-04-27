@@ -13,8 +13,8 @@ import (
 )
 
 type problemItem struct {
-	q             leetcode.Question
-	hasLocalDraft bool
+	q           leetcode.Question
+	hasSolution bool
 }
 
 func (p problemItem) FilterValue() string {
@@ -23,16 +23,16 @@ func (p problemItem) FilterValue() string {
 
 // rowGlyph returns the leftmost status indicator for a problem row:
 // $ for premium, ✓ for accepted, ~ for in-progress (tried server-side
-// or a local draft on disk), · otherwise. Every glyph is a single cell
+// or a local Solution on disk), · otherwise. Every glyph is a single cell
 // so the status column lines up regardless of font width quirks.
-func rowGlyph(status *string, hasLocalDraft, paidOnly bool) string {
+func rowGlyph(status *string, hasSolution, paidOnly bool) string {
 	if paidOnly {
 		return dimStyle.Render(glyphPaid)
 	}
 	if isAccepted(status) {
 		return rowSolvedStyle.Render(glyphSolved)
 	}
-	if isTried(status) || hasLocalDraft {
+	if isTried(status) || hasSolution {
 		return inProgressStyle.Render(glyphTried)
 	}
 	return dimStyle.Render("·")
@@ -84,7 +84,7 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	}
 	// Every status glyph is single-cell (see TestStatusGlyphsAreSingleCell),
 	// so the column is a fixed 2 cells: glyph + one trailing space.
-	glyph := rowGlyph(it.q.Status, it.hasLocalDraft, it.q.PaidOnly)
+	glyph := rowGlyph(it.q.Status, it.hasSolution, it.q.PaidOnly)
 	statusCell := glyph + " "
 
 	num := fmt.Sprintf("%5s", it.q.QuestionFrontendID+".")
@@ -151,10 +151,10 @@ func rebuildProblemsList(m *Model) {
 	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
 }
 
-func newProblemsList(width, height int, qs []leetcode.Question, listName string, drafts map[string]bool) list.Model {
+func newProblemsList(width, height int, qs []leetcode.Question, listName string, solutions map[string]bool) list.Model {
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
-		items[i] = problemItem{q: q, hasLocalDraft: drafts[q.TitleSlug]}
+		items[i] = problemItem{q: q, hasSolution: solutions[q.TitleSlug]}
 	}
 	l := list.New(items, problemsDelegate{}, width, height)
 	l.SetShowTitle(false)
@@ -298,7 +298,7 @@ func viewProblemsView(m *Model) string {
 	}
 	vline := strings.Join(vlines, "\n")
 	previewBox := lipgloss.NewStyle().
-		Width(previewW - 1).
+		Width(previewW-1).
 		Padding(0, 1).
 		Render(m.preview.view())
 

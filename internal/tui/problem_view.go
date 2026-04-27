@@ -22,9 +22,9 @@ type problemView struct {
 	chosenLang       string // langSlug
 	pickingLang      bool
 	langCursor       int
-	scaffoldPath     string
+	solutionPath     string
 	status           *string
-	hasDraft         bool
+	hasSolution      bool
 	solutionVP       viewport.Model
 	solutionRendered string
 }
@@ -37,9 +37,9 @@ func newProblemView(cache SolutionCache, width, height int) problemView {
 	}
 }
 
-func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasDraft bool, totalWidth, totalHeight int) error {
+func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, hasSolution bool, totalWidth, totalHeight int) error {
 	pv.status = status
-	pv.hasDraft = hasDraft
+	pv.hasSolution = hasSolution
 	pv.chosenLang = pv.pickDefaultLang(p.CodeSnippets, p.TitleSlug)
 	pv.pickingLang = false
 	pv.langCursor = 0
@@ -50,7 +50,7 @@ func (pv *problemView) setProblem(p *leetcode.ProblemDetail, status *string, has
 // the current chosenLang and overall window dimensions. Used on initial load,
 // language switches, window resizes, and post-edit refreshes.
 func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, totalHeight int) error {
-	pv.scaffoldPath = pv.cache.ExistingPath(p.TitleSlug, pv.chosenLang)
+	pv.solutionPath = pv.cache.ExistingPath(p.TitleSlug, pv.chosenLang)
 	descW, descH, solW, solH := problemDetailLayout(totalWidth, totalHeight)
 
 	md, err := render.HTMLToMarkdown(p.Content)
@@ -69,7 +69,7 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 
 	pv.solutionVP.Width = solW
 	pv.solutionVP.Height = solH
-	if solW > 0 && pv.scaffoldPath != "" {
+	if solW > 0 && pv.solutionPath != "" {
 		// Best-effort: render errors don't block the description pane.
 		sol, _ := pv.renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
 		pv.solutionRendered = sol
@@ -142,8 +142,8 @@ func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
 }
 
 // pickDefaultLang chooses an initial language for a problem. A language with
-// an existing cached solution wins so the user lands back on whatever they
-// were drafting. Otherwise: golang → python3 → first available.
+// an existing cached Solution wins so the user lands back on the one they
+// last worked in. Otherwise: golang → python3 → first available.
 func (pv *problemView) pickDefaultLang(snippets []leetcode.CodeSnippet, slug string) string {
 	if slug != "" {
 		for _, s := range snippets {
@@ -224,26 +224,26 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			pv.scaffoldPath = path
+			pv.solutionPath = path
 			return m, m.editor.Open(path)
 		case keyMatch(km, keys.Run):
-			if pv.scaffoldPath == "" {
+			if pv.solutionPath == "" {
 				m.err = fmt.Errorf("nothing to run — press 'e' to write a solution first")
 				return m, nil
 			}
 			m.runLoading = true
 			m.err = nil
-			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
+			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
 			m.cancelInflight = cancel
 			return m, cmd
 		case keyMatch(km, keys.Submit):
-			if pv.scaffoldPath == "" {
+			if pv.solutionPath == "" {
 				m.err = fmt.Errorf("nothing to submit — press 'e' to write a solution first")
 				return m, nil
 			}
 			m.submitLoading = true
 			m.err = nil
-			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.scaffoldPath)
+			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
 			m.cancelInflight = cancel
 			return m, cmd
 		case keyMatch(km, keys.NextProb):
@@ -300,7 +300,7 @@ func viewProblemView(m *Model) string {
 		m.currentProblem.Title,
 		difficultyLabel(m.currentProblem.Difficulty),
 	)
-	if badge := statusBadge(pv.status, pv.hasDraft); badge != "" {
+	if badge := statusBadge(pv.status, pv.hasSolution); badge != "" {
 		leftLabel += "   " + badge
 	}
 
@@ -333,8 +333,8 @@ func viewProblemView(m *Model) string {
 
 	// Two-pane layout. Top divider carries left and right labels around ╮.
 	rightLabel := "no solution yet"
-	if pv.scaffoldPath != "" {
-		rightLabel = filepath.Base(pv.scaffoldPath)
+	if pv.solutionPath != "" {
+		rightLabel = filepath.Base(pv.solutionPath)
 	}
 	leftDiv := divider(descW, leftLabel, 0, "")
 	rightDiv := divider(solW, rightLabel, 0, "")
@@ -349,7 +349,7 @@ func viewProblemView(m *Model) string {
 
 	// Right pane content: cached solution or scaffold prompt.
 	var solBody string
-	if pv.scaffoldPath != "" {
+	if pv.solutionPath != "" {
 		solBody = pv.solutionVP.View()
 	} else {
 		solBody = renderScaffoldPrompt(m.currentProblem)
@@ -420,11 +420,11 @@ func renderScaffoldPrompt(p *leetcode.ProblemDetail) string {
 // statusBadge returns a styled "✓ Solved" / "✎ In progress" label, or "" when
 // the problem is untouched. Drives both the lists-screen glyph and the
 // problem-screen header so the two stay in sync.
-func statusBadge(status *string, hasLocalDraft bool) string {
+func statusBadge(status *string, hasSolution bool) string {
 	if isAccepted(status) {
 		return successStyle.Render("✓ Solved")
 	}
-	if isTried(status) || hasLocalDraft {
+	if isTried(status) || hasSolution {
 		return inProgressStyle.Render("✎ In progress")
 	}
 	return ""

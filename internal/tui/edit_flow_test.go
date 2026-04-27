@@ -72,12 +72,12 @@ func TestEditFlow_ScaffoldsAndOpens(t *testing.T) {
 	if ed.openCalls[0] != wantPath {
 		t.Errorf("Open path = %q, want %q", ed.openCalls[0], wantPath)
 	}
-	if m.problem.scaffoldPath != wantPath {
-		t.Errorf("scaffoldPath = %q, want %q", m.problem.scaffoldPath, wantPath)
+	if m.problem.solutionPath != wantPath {
+		t.Errorf("solutionPath = %q, want %q", m.problem.solutionPath, wantPath)
 	}
 }
 
-func TestEditorDoneMsg_MarksDraft(t *testing.T) {
+func TestEditorDoneMsg_MarksSolution(t *testing.T) {
 	cache := newFakeCache()
 	ed := newFakeEditor()
 	m := onProblemScreen("two-sum", cache, ed, &fakeClient{})
@@ -90,12 +90,12 @@ func TestEditorDoneMsg_MarksDraft(t *testing.T) {
 	m.screen = screenProblem
 
 	path := cache.writeSolution("two-sum", "golang", "package main\n")
-	m.problem.scaffoldPath = path
+	m.problem.solutionPath = path
 
 	_, _ = m.Update(editor.EditorDoneMsg{Path: path})
 
-	if !m.problem.hasDraft {
-		t.Error("problemView.hasDraft = false, want true after EditorDoneMsg")
+	if !m.problem.hasSolution {
+		t.Error("problemView.hasSolution = false, want true after EditorDoneMsg")
 	}
 	if !m.solutionSlugs["two-sum"] {
 		t.Errorf("solutionSlugs[two-sum] = false, want true")
@@ -104,8 +104,8 @@ func TestEditorDoneMsg_MarksDraft(t *testing.T) {
 	if !ok {
 		t.Fatal("item 0 not a problemItem")
 	}
-	if !pi.hasLocalDraft {
-		t.Error("problems list row hasLocalDraft = false, want true")
+	if !pi.hasSolution {
+		t.Error("problems list row hasSolution = false, want true")
 	}
 	if m.err != nil {
 		t.Errorf("m.err = %v, want nil on successful edit", m.err)
@@ -126,10 +126,10 @@ func TestEditorDoneMsg_WithError(t *testing.T) {
 	if !strings.Contains(m.err.Error(), "editor exited 1") {
 		t.Errorf("m.err = %v, want it to contain editor's error", m.err)
 	}
-	// Scaffold writes the file before Open is invoked, so the draft survives an
-	// editor crash. hasDraft should still be set.
-	if !m.problem.hasDraft {
-		t.Error("hasDraft = false on EditorDoneMsg with error; the scaffolded file still exists on disk")
+	// Scaffold writes the file before Open is invoked, so the Solution
+	// survives an editor crash. hasSolution should still be set.
+	if !m.problem.hasSolution {
+		t.Error("hasSolution = false on EditorDoneMsg with error; the scaffolded file still exists on disk")
 	}
 }
 
@@ -140,7 +140,7 @@ func TestRun_ReadsLatestSolution(t *testing.T) {
 	m := onProblemScreen("two-sum", cache, ed, fc)
 
 	path := cache.writeSolution("two-sum", "golang", "package main\nfunc twoSum() {}\n")
-	m.problem.scaffoldPath = path
+	m.problem.solutionPath = path
 
 	_, cmd := m.Update(keyRun)
 	if cmd == nil {

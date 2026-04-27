@@ -179,7 +179,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h = 24
 		}
 		lw, lh, pw, ph := problemsLayout(w, h)
-		m.solutionSlugs = msg.drafts
+		m.solutionSlugs = msg.solutions
 		if m.solutionSlugs == nil {
 			m.solutionSlugs = map[string]bool{}
 		}
@@ -217,8 +217,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.problem = newProblemView(m.cache, w, h)
 		status := m.statusFor(msg.problem.TitleSlug)
-		hasDraft := m.solutionSlugs[msg.problem.TitleSlug]
-		if err := m.problem.setProblem(msg.problem, status, hasDraft, w, m.height); err != nil {
+		hasSolution := m.solutionSlugs[msg.problem.TitleSlug]
+		if err := m.problem.setProblem(msg.problem, status, hasSolution, w, m.height); err != nil {
 			m.err = err
 		}
 		m.screen = screenProblem
@@ -234,11 +234,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.solutionSlugs = map[string]bool{}
 			}
 			m.solutionSlugs[slug] = true
-			m.problem.hasDraft = true
+			m.problem.hasSolution = true
 			if m.problemsReady {
 				for i, it := range m.problems.Items() {
 					if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
-						pi.hasLocalDraft = true
+						pi.hasSolution = true
 						m.problems.SetItem(i, pi)
 						break
 					}
@@ -371,7 +371,7 @@ func visibleProblems(all []leetcode.Question, reviewMode bool, dueSlugs map[stri
 // markSolved updates the in-memory list and the open problem-view to AC
 // after a successful submit. The favorites-list query isn't re-fetched
 // during a session, so without this the row stays at its load-time status
-// and the local-draft signal drags the glyph back to "in progress".
+// and the local-Solution signal drags the glyph back to "in progress".
 func (m *Model) markSolved(slug string) {
 	ac := "AC"
 	if m.problemsReady {
@@ -433,7 +433,7 @@ type listsLoadedMsg struct {
 
 type problemsLoadedMsg struct {
 	questions []leetcode.Question
-	drafts    map[string]bool
+	solutions map[string]bool
 	// dueSlugs is the set of currently-due slugs computed by loadProblemsCmd
 	// when reviewMode was on at load time. Nil when the load happened in
 	// Explore Mode (no SR fan-out). Used by the Update handler to filter
@@ -486,7 +486,7 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCac
 		if err != nil {
 			return errMsg{err}
 		}
-		drafts, _ := cache.SlugsWith()
+		solutions, _ := cache.SlugsWith()
 
 		var dueSlugs map[string]bool
 		if reviewMode {
@@ -505,7 +505,7 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCac
 				}
 			}
 		}
-		return problemsLoadedMsg{questions: res.Questions, drafts: drafts, dueSlugs: dueSlugs}
+		return problemsLoadedMsg{questions: res.Questions, solutions: solutions, dueSlugs: dueSlugs}
 	}
 }
 

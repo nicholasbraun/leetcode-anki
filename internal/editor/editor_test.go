@@ -179,7 +179,7 @@ func TestSlugsWith_FindsScaffoldedSlugs(t *testing.T) {
 	}
 }
 
-// An empty subdirectory under leetcode-anki/ shouldn't count as a draft —
+// An empty subdirectory under leetcode-anki/ shouldn't count as a Solution —
 // guards against a future failed-write that left an empty dir behind.
 func TestSlugsWith_IgnoresEmptyDir(t *testing.T) {
 	dir := redirectCacheDir(t)
