@@ -28,6 +28,7 @@ go vet ./... && go build ./...
 - POSTs to `interpret_solution` and `submit` require `Referer: https://leetcode.com/problems/{slug}/`. Already handled in `client.setHeaders`; don't bypass.
 - Bubble Tea + `tea.ExecProcess`: never wrap an exec command in `tea.Sequence` to set state first. The state-setting message is not reliably delivered to `Update` before exec takes the terminal. Set state synchronously in `Update`, then return only the exec `tea.Cmd`.
 - Problem-screen language picker reads from `ProblemDetail.CodeSnippets`. Scaffold path uses `editor.Ext(langSlug)`; unknown langs fall back to `.txt`.
+- `interpret_solution`'s check-poll response can come back with `code_answer` (and parallel arrays) padded by a trailing empty entry beyond the cases the client submitted — origin unknown, possibly a benchmark/expected-solution row. `buildRunCases` trims trailing empties; don't reintroduce ghost cases by reading `len(code_answer)` directly.
 
 ## Conventions
 

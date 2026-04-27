@@ -253,6 +253,40 @@ func TestBuildRunCases(t *testing.T) {
 			metaData:  twoSumMeta,
 			want:      nil,
 		},
+		{
+			// LeetCode's live API has been observed to return code_answer
+			// arrays with a trailing empty entry beyond the cases we
+			// actually submitted (origin unknown — possibly a benchmark
+			// or expected-solution row). Trimming trailing empties keeps
+			// the TUI from rendering ghost cases without losing valid
+			// cases (an interior "" is still a real, possibly-failing
+			// output).
+			name: "trailing empty code_answer entries trimmed",
+			wire: runResultWire{
+				CodeAnswer:         []string{"[0,1]", ""},
+				ExpectedCodeAnswer: []string{"[0,1]", ""},
+				CompareResult:      "1",
+			},
+			dataInput: "[2,7,11,15]\n9",
+			metaData:  twoSumMeta,
+			want: []RunCase{
+				{Index: 0, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+			},
+		},
+		{
+			name: "interior empty code_answer is preserved (real failing case)",
+			wire: runResultWire{
+				CodeAnswer:         []string{"", "[0,1]"},
+				ExpectedCodeAnswer: []string{"[1,2]", "[0,1]"},
+				CompareResult:      "01",
+			},
+			dataInput: "[3,2,4]\n6\n[2,7,11,15]\n9",
+			metaData:  twoSumMeta,
+			want: []RunCase{
+				{Index: 0, Input: "[3,2,4]\n6", Output: "", Expected: "[1,2]", Pass: false},
+				{Index: 1, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+			},
+		},
 	}
 
 	for _, tc := range tests {

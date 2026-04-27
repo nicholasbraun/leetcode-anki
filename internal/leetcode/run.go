@@ -96,7 +96,9 @@ func (c *Client) InterpretSolution(ctx context.Context, slug, lang, questionID, 
 // buildRunCases materializes RunResult.Cases from the parallel arrays the
 // check endpoint returns plus the raw dataInput the caller submitted.
 //
-// The number of cases is len(wire.CodeAnswer); shorter parallel slices are
+// The number of cases is len(wire.CodeAnswer) after trimming trailing empty
+// entries (LeetCode's live API has been observed to pad code_answer with a
+// blank tail beyond the cases we submitted); shorter parallel slices are
 // padded with empty strings. paramCount comes from metaData (`params`
 // length); when MetaData is missing or malformed the input split degrades
 // gracefully (even-chunk by case count, then per-line) rather than panicking.
@@ -104,6 +106,9 @@ func (c *Client) InterpretSolution(ctx context.Context, slug, lang, questionID, 
 // equality otherwise.
 func buildRunCases(w runResultWire, dataInput, metaData string) []RunCase {
 	n := len(w.CodeAnswer)
+	for n > 0 && w.CodeAnswer[n-1] == "" {
+		n--
+	}
 	if n == 0 {
 		return nil
 	}
