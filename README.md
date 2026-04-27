@@ -44,7 +44,7 @@ I built this for three reasons:
 ### Build and run
 
 ```sh
-git clone <repo> leetcode-anki && cd leetcode-anki
+git clone https://github.com/nicholasbraun/leetcode-anki && cd leetcode-anki
 go run ./cmd/leetcode-anki        # run from source
 # or
 go build ./cmd/leetcode-anki      # produce ./leetcode-anki binary
