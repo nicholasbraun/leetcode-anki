@@ -67,15 +67,14 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected run key to schedule a tea.Cmd")
 	}
-	if !m.runLoading {
-		t.Fatal("runLoading = false after pressing r")
+	if !m.load.Active() || m.load.kind != KindRun {
+		t.Fatalf("expected run indicator active after pressing r, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 	if m.cancelInflight == nil {
 		t.Fatal("cancelInflight was not stored on the model")
 	}
 
-	cmdDone := make(chan tea.Msg, 1)
-	go func() { cmdDone <- cmd() }()
+	wg, _ := startBatch(cmd)
 
 	// Wait for the request to actually be in-flight before pressing esc;
 	// otherwise we'd be racing the cancellation against the goroutine
@@ -86,7 +85,7 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 		t.Fatal("InterpretSolution was never invoked")
 	}
 
-	// Esc during runLoading must cancel.
+	// Esc during a run-in-flight must cancel.
 	_, escCmd := m.Update(keyEsc)
 	if escCmd != nil {
 		t.Errorf("esc-during-run must not schedule a follow-up cmd; got %T", escCmd)
@@ -102,8 +101,7 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 		t.Errorf("InterpretSolution saw %v, want context.Canceled", bc.err)
 	}
 
-	// Drain the cmd's tea.Msg so the goroutine doesn't leak.
-	<-cmdDone
+	wg.Wait()
 }
 
 // Same flow for Submit — the cancel wiring is duplicated between
@@ -120,12 +118,11 @@ func TestEsc_CancelsInflightSubmit(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected submit key to schedule a tea.Cmd")
 	}
-	if !m.submitLoading {
-		t.Fatal("submitLoading = false after pressing s")
+	if !m.load.Active() || m.load.kind != KindSubmit {
+		t.Fatalf("expected submit indicator active after pressing s, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 
-	cmdDone := make(chan tea.Msg, 1)
-	go func() { cmdDone <- cmd() }()
+	wg, _ := startBatch(cmd)
 
 	select {
 	case <-bc.started:
@@ -143,5 +140,5 @@ func TestEsc_CancelsInflightSubmit(t *testing.T) {
 	if !errors.Is(bc.err, context.Canceled) {
 		t.Errorf("Submit saw %v, want context.Canceled", bc.err)
 	}
-	<-cmdDone
+	wg.Wait()
 }

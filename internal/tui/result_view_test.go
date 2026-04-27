@@ -167,10 +167,9 @@ func TestRatingDigitRecordsAndAdvances(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("expected loadProblemCmd for next due slug")
 			}
-			msg := cmd()
-			loaded, ok := msg.(problemLoadedMsg)
+			loaded, ok := extractMsg[problemLoadedMsg](cmd)
 			if !ok {
-				t.Fatalf("expected problemLoadedMsg, got %T", msg)
+				t.Fatal("expected problemLoadedMsg in dispatch batch")
 			}
 			if loaded.problem == nil || loaded.problem.TitleSlug != "b" {
 				t.Errorf("loaded slug = %v, want b", loaded.problem)

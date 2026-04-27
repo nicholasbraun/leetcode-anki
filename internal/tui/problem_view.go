@@ -231,21 +231,19 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = fmt.Errorf("nothing to run — press 'e' to write a solution first")
 				return m, nil
 			}
-			m.runLoading = true
 			m.err = nil
 			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
 			m.cancelInflight = cancel
-			return m, cmd
+			return m, tea.Batch(m.load.Start(KindRun, "running"), cmd)
 		case keyMatch(km, keys.Submit):
 			if pv.solutionPath == "" {
 				m.err = fmt.Errorf("nothing to submit — press 'e' to write a solution first")
 				return m, nil
 			}
-			m.submitLoading = true
 			m.err = nil
 			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
 			m.cancelInflight = cancel
-			return m, cmd
+			return m, tea.Batch(m.load.Start(KindSubmit, "submitting"), cmd)
 		case keyMatch(km, keys.NextProb):
 			return m, advanceProblem(m, +1)
 		case keyMatch(km, keys.PrevProb):
@@ -275,9 +273,8 @@ func advanceProblem(m *Model, delta int) tea.Cmd {
 		}
 		m.problemIndex = next
 		m.problems.Select(next)
-		m.problemLoading = true
 		m.err = nil
-		return loadProblemCmd(m.ctx, m.client, it.q.TitleSlug)
+		return tea.Batch(m.load.Start(KindNeutral, "loading problem"), loadProblemCmd(m.ctx, m.client, it.q.TitleSlug))
 	}
 	return nil
 }
@@ -320,7 +317,7 @@ func viewProblemView(m *Model) string {
 		bot := divider(w, "", 0, "")
 		body := pv.vp.View()
 		if pv.rendered == "" {
-			body = " " + loadingStyle.Render(glyphSpin+" loading…")
+			body = " " + loadingStyle.Render("loading…")
 		}
 		return strings.Join([]string{
 			crumbs, "",
@@ -343,7 +340,7 @@ func viewProblemView(m *Model) string {
 	// Description pane.
 	descBody := pv.vp.View()
 	if pv.rendered == "" {
-		descBody = " " + loadingStyle.Render(glyphSpin+" loading…")
+		descBody = " " + loadingStyle.Render("loading…")
 	}
 	descBox := lipgloss.NewStyle().Width(descW).Height(descH).Render(descBody)
 
@@ -380,16 +377,13 @@ func viewProblemView(m *Model) string {
 	}, "\n")
 }
 
-// runStatus returns a single-line "⟳ running…" / "⟳ submitting…" indicator
-// for in-flight requests, or "" when none. Rendered in the problem screen
-// rather than as a full-screen takeover so the user can still read the
-// problem (and esc-cancel) while the request is in flight.
+// runStatus returns the inline run/submit indicator for in-flight requests
+// on the problem screen. Renders nothing when idle or when the active load
+// is a full-screen-takeover (KindNeutral) — those don't reach this code
+// path because the takeover replaces the whole screen.
 func runStatus(m *Model) string {
-	switch {
-	case m.runLoading:
-		return loadingStyle.Render(glyphSpin + " running…")
-	case m.submitLoading:
-		return loadingStyle.Render(glyphSpin + " submitting…")
+	if m.load.kind == KindRun || m.load.kind == KindSubmit {
+		return m.load.Inline()
 	}
 	return ""
 }

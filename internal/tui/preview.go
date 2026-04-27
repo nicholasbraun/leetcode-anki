@@ -159,7 +159,11 @@ func (s *previewState) contentForCurrent() string {
 	if s.err != nil {
 		return errorStyle.Render("failed to load: " + truncateErr(s.err.Error(), 200))
 	}
-	return loadingStyle.Render(glyphSpin + " loading…")
+	// Static placeholder for the brief debounce window before the parent
+	// screen's animated Indicator takes over. Overlaying the live spinner
+	// is the parent's job (see viewProblemsView), so this string is only
+	// what shows in cached/SetContent passes.
+	return loadingStyle.Render("loading…")
 }
 
 // renderProblemBody produces the title + difficulty header, the

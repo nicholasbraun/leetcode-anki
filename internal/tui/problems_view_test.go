@@ -81,9 +81,8 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected current-slug tick to schedule a fetch")
 	}
-	msg := cmd()
-	if _, ok := msg.(previewLoadedMsg); !ok {
-		t.Fatalf("expected previewLoadedMsg, got %T", msg)
+	if _, ok := extractMsg[previewLoadedMsg](cmd); !ok {
+		t.Fatal("expected previewLoadedMsg in dispatch batch")
 	}
 	if len(fc.calls) != 1 || fc.calls[0] != "d" {
 		t.Errorf("ProblemDetail calls = %v, want [d]", fc.calls)
@@ -102,8 +101,12 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected fetch to be scheduled")
 	}
-	loaded := cmd()
-	if _, _ = m.Update(loaded); fc.calls[0] != "a" {
+	loaded, ok := extractMsg[previewLoadedMsg](cmd)
+	if !ok {
+		t.Fatal("expected previewLoadedMsg in dispatch batch")
+	}
+	_, _ = m.Update(loaded)
+	if len(fc.calls) == 0 || fc.calls[0] != "a" {
 		t.Fatalf("expected one preview fetch for 'a', got %v", fc.calls)
 	}
 	fc.calls = nil
@@ -113,9 +116,8 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
-	msg := cmd()
-	if _, ok := msg.(problemLoadedMsg); !ok {
-		t.Fatalf("expected cache-served problemLoadedMsg, got %T", msg)
+	if _, ok := extractMsg[problemLoadedMsg](cmd); !ok {
+		t.Fatal("expected cache-served problemLoadedMsg")
 	}
 	if len(fc.calls) != 0 {
 		t.Errorf("expected no ProblemDetail calls on cache hit, got %v", fc.calls)

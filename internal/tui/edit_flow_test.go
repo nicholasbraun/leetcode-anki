@@ -146,12 +146,13 @@ func TestRun_ReadsLatestSolution(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected run key to return a tea.Cmd")
 	}
-	if !m.runLoading {
-		t.Error("runLoading = false, want true after pressing run")
+	if !m.load.Active() || m.load.kind != KindRun {
+		t.Errorf("expected run indicator active after pressing run, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 
-	// Drain the cmd; it reads the solution then calls InterpretSolution.
-	_ = cmd()
+	// Drain the cmd; the work leaf reads the solution then calls
+	// InterpretSolution. Tick cmds emitted by the indicator return immediately.
+	drainBatch(cmd)
 
 	if len(cache.readCalls) != 1 || cache.readCalls[0] != path {
 		t.Errorf("Read calls = %v, want [%q]", cache.readCalls, path)

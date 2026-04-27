@@ -7,7 +7,6 @@ const (
 	glyphSolved = "✓"
 	glyphTried  = "~"
 	glyphPaid   = "$"
-	glyphSpin   = "⟳"
 )
 
 var (

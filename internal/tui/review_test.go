@@ -27,7 +27,7 @@ func TestV_OnListsScreen_TogglesReviewMode(t *testing.T) {
 	if !m.reviewMode {
 		t.Error("first 'v' should enable reviewMode")
 	}
-	if m.problemsLoading {
+	if m.load.Active() {
 		t.Error("toggling on lists must not trigger a problems load")
 	}
 	if cmd != nil {
@@ -59,8 +59,8 @@ func TestEnter_InReviewMode_PreservesMode(t *testing.T) {
 	if !m.reviewMode {
 		t.Error("reviewMode must persist when entering a list")
 	}
-	if !m.problemsLoading {
-		t.Error("problemsLoading should be true while the list loads")
+	if !m.load.Active() || m.load.kind != KindNeutral {
+		t.Errorf("loading indicator should be active while the list loads, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 	if cmd == nil {
 		t.Error("expected loadProblemsCmd to be scheduled")
@@ -114,7 +114,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	if m.reviewMode {
 		t.Error("'v' should toggle reviewMode off")
 	}
-	if m.problemsLoading {
+	if m.load.Active() {
 		t.Error("toggling Review→Explore must not trigger a fetch (we already have problemsAll)")
 	}
 	if got := len(m.problems.Items()); got != 3 {
@@ -126,7 +126,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	if !m.reviewMode {
 		t.Error("'v' should toggle reviewMode back on")
 	}
-	if m.problemsLoading {
+	if m.load.Active() {
 		t.Error("toggling Explore→Review with cached dueSlugs must not re-fetch")
 	}
 	if got := len(m.problems.Items()); got != 1 {
@@ -158,8 +158,8 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 	if !m.reviewMode {
 		t.Error("'v' should switch into Review Mode")
 	}
-	if !m.problemsLoading {
-		t.Error("first Explore→Review with no dueSlugs must trigger a load")
+	if !m.load.Active() || m.load.kind != KindNeutral {
+		t.Errorf("first Explore→Review with no dueSlugs must trigger a load, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 	if cmd == nil {
 		t.Error("expected loadProblemsCmd to be scheduled")

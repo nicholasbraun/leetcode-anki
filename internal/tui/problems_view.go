@@ -189,9 +189,8 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				// computed yet, so re-fire the load to fan out Status calls.
 				// Subsequent toggles use the cached dueSlugs synchronously.
 				if m.reviewMode && m.dueSlugs == nil {
-					m.problemsLoading = true
 					m.err = nil
-					return m, loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviews)
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviews))
 				}
 				rebuildProblemsList(m)
 				return m, syncPreviewCursor(m)
@@ -206,8 +205,7 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 					if cached := m.preview.cached(it.q.TitleSlug); cached != nil {
 						return m, deliverProblem(cached)
 					}
-					m.problemLoading = true
-					return m, loadProblemCmd(m.ctx, m.client, it.q.TitleSlug)
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problem"), loadProblemCmd(m.ctx, m.client, it.q.TitleSlug))
 				}
 			case keyMatch(km, keys.PreviewUp), keyMatch(km, keys.PreviewDown):
 				return m, m.preview.scrollUpdate(msg)
@@ -295,10 +293,14 @@ func viewProblemsView(m *Model) string {
 		vlines[i] = dividerLineStyle.Render("│")
 	}
 	vline := strings.Join(vlines, "\n")
+	previewContent := m.preview.view()
+	if m.previewLoad.Active() {
+		previewContent = m.previewLoad.Inline()
+	}
 	previewBox := lipgloss.NewStyle().
 		Width(previewW-1).
 		Padding(0, 1).
-		Render(m.preview.view())
+		Render(previewContent)
 
 	middle := lipgloss.JoinHorizontal(lipgloss.Top, listBox, vline, previewBox)
 

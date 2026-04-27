@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
@@ -43,10 +42,16 @@ type Model struct {
 	screen screen
 	err    error
 
+	// load drives the visible loading indicator on the active screen.
+	// previewLoad is a separate instance because the side-pane preview
+	// can fetch concurrently with a per-screen load (e.g. arrow-keying
+	// through the problems list while the list itself is rehydrating).
+	load        Indicator
+	previewLoad Indicator
+
 	// Lists screen
-	lists        list.Model
-	listsReady   bool
-	listsLoading bool
+	lists      list.Model
+	listsReady bool
 
 	// reviewMode is a sticky session toggle. When on, list screens render
 	// with a Review-Mode indicator and the problems screen filters to
@@ -54,13 +59,12 @@ type Model struct {
 	reviewMode bool
 
 	// Problems screen
-	currentList     leetcode.FavoriteList
-	problems        list.Model
-	problemsReady   bool
-	problemsLoading bool
-	problemIndex    int
-	preview         previewState
-	solutionSlugs   map[string]bool
+	currentList   leetcode.FavoriteList
+	problems      list.Model
+	problemsReady bool
+	problemIndex  int
+	preview       previewState
+	solutionSlugs map[string]bool
 
 	// problemsAll is the unfiltered slice loaded for currentList. The
 	// problems list view derives its items from this, optionally filtered
@@ -76,11 +80,6 @@ type Model struct {
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
 	problem        problemView
-	problemLoading bool
-
-	// Run/submit
-	runLoading    bool
-	submitLoading bool
 
 	// Result screen
 	result resultView
@@ -88,21 +87,28 @@ type Model struct {
 
 func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) *Model {
 	return &Model{
-		client:  client,
-		cache:   cache,
-		editor:  ed,
-		reviews: reviews,
-		ctx:     ctx,
-		screen:  screenLists,
+		client:      client,
+		cache:       cache,
+		editor:      ed,
+		reviews:     reviews,
+		ctx:         ctx,
+		screen:      screenLists,
+		load:        NewIndicator(),
+		previewLoad: NewIndicator(),
 	}
 }
 
 func (m *Model) Init() tea.Cmd {
-	m.listsLoading = true
-	return loadListsCmd(m.ctx, m.client)
+	return tea.Batch(m.load.Start(KindNeutral, "loading your lists"), loadListsCmd(m.ctx, m.client))
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if handled, cmd := m.load.Update(msg); handled {
+		return m, cmd
+	}
+	if handled, cmd := m.previewLoad.Update(msg); handled {
+		return m, cmd
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -131,7 +137,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Cancel an in-flight run/submit when the user changes their mind. esc
 		// during the spinner aborts the request; ctrl+c always quits and also
 		// cancels.
-		if msg.String() == "esc" && (m.runLoading || m.submitLoading) {
+		if msg.String() == "esc" && m.load.Active() && (m.load.kind == KindRun || m.load.kind == KindSubmit) {
 			if m.cancelInflight != nil {
 				m.cancelInflight()
 			}
@@ -146,16 +152,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.err = msg.error
-		m.listsLoading = false
-		m.problemsLoading = false
-		m.problemLoading = false
-		m.runLoading = false
-		m.submitLoading = false
+		m.load.Stop()
+		m.previewLoad.Stop()
 		m.clearInflight()
 		return m, nil
 
 	case listsLoadedMsg:
-		m.listsLoading = false
+		m.load.Stop()
 		listH := m.height - listsChromeHeight
 		if listH < 5 {
 			listH = 20
@@ -169,7 +172,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case problemsLoadedMsg:
-		m.problemsLoading = false
+		m.load.Stop()
 		w := m.width
 		if w < 20 {
 			w = 80
@@ -198,14 +201,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.preview.tickFired(msg.slug) {
 			return m, nil
 		}
-		return m, loadPreviewCmd(m.ctx, m.client, msg.slug)
+		return m, tea.Batch(m.previewLoad.Start(KindNeutral, "loading preview"), loadPreviewCmd(m.ctx, m.client, msg.slug))
 
 	case previewLoadedMsg:
+		m.previewLoad.Stop()
 		m.preview.fetchReturned(msg.slug, msg.detail, msg.err)
 		return m, nil
 
 	case problemLoadedMsg:
-		m.problemLoading = false
+		m.load.Stop()
 		m.currentProblem = msg.problem
 		w := m.width
 		if w < 20 {
@@ -251,14 +255,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case runResultMsg:
-		m.runLoading = false
+		m.load.Stop()
 		m.clearInflight()
 		m.result = resultView{kind: resultRun, run: msg.result}
 		m.screen = screenResult
 		return m, nil
 
 	case submitResultMsg:
-		m.submitLoading = false
+		m.load.Stop()
 		m.clearInflight()
 		m.result = resultView{kind: resultSubmit, submit: msg.result}
 		m.screen = screenResult
@@ -275,21 +279,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Cold loads (KindNeutral) take over the active screen: the user has
+	// nothing useful to do until lists / problems / problem-detail arrive.
+	// Run / submit (KindRun / KindSubmit) intentionally do NOT swallow
+	// input — they render an inline indicator so the user can keep reading
+	// the problem and esc-cancel.
+	if m.load.Active() && m.load.kind == KindNeutral {
+		return m, nil
+	}
+
 	switch m.screen {
 	case screenLists:
-		if m.listsLoading {
-			return m, nil
-		}
 		return updateListsView(m, msg)
 	case screenProblems:
-		if m.problemsLoading {
-			return m, nil
-		}
 		return updateProblemsView(m, msg)
 	case screenProblem:
-		if m.problemLoading {
-			return m, nil
-		}
 		return updateProblemView(m, msg)
 	case screenResult:
 		return updateResultView(m, msg)
@@ -301,17 +305,9 @@ func (m *Model) View() string {
 	if m.err != nil {
 		return renderWithBanner(m.viewScreen(), errorStyle.Render("error: "+truncateErr(m.err.Error(), 240)))
 	}
-	if m.listsLoading {
-		return loadingView("loading your lists...")
+	if m.load.Active() && m.load.kind == KindNeutral {
+		return m.load.View()
 	}
-	if m.problemsLoading {
-		return loadingView("loading problems...")
-	}
-	if m.problemLoading {
-		return loadingView("loading problem...")
-	}
-	// Run/submit do NOT take over the screen: the problem view renders an
-	// inline ⟳ status so the user can keep reading the problem and esc-cancel.
 	return m.viewScreen()
 }
 
@@ -327,10 +323,6 @@ func (m *Model) viewScreen() string {
 		return viewResultView(m)
 	}
 	return ""
-}
-
-func loadingView(msg string) string {
-	return lipgloss.NewStyle().Padding(1, 2).Render(msg)
 }
 
 func renderWithBanner(view, banner string) string {

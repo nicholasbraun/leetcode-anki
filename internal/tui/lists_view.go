@@ -74,8 +74,7 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case keyMatch(km, keys.Back):
 				m.err = nil
-				m.listsLoading = true
-				return m, loadListsCmd(m.ctx, m.client)
+				return m, tea.Batch(m.load.Start(KindNeutral, "loading your lists"), loadListsCmd(m.ctx, m.client))
 			}
 		}
 		return m, nil
@@ -94,9 +93,8 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Enter):
 				if it, ok := m.lists.SelectedItem().(listItem); ok {
 					m.currentList = it.fav
-					m.problemsLoading = true
 					m.err = nil
-					return m, loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug, m.reviewMode, m.reviews)
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug, m.reviewMode, m.reviews))
 				}
 			}
 		}

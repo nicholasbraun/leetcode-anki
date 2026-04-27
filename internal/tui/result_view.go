@@ -117,8 +117,7 @@ func advanceToNextDue(m *Model, ratedSlug string) tea.Cmd {
 		m.screen = screenProblems
 		return nil
 	}
-	m.problemLoading = true
-	return loadProblemCmd(m.ctx, m.client, visible[0].TitleSlug)
+	return tea.Batch(m.load.Start(KindNeutral, "loading problem"), loadProblemCmd(m.ctx, m.client, visible[0].TitleSlug))
 }
 
 func viewResultView(m *Model) string {

@@ -199,3 +199,87 @@ func (f *fakeReviews) Preview(_ context.Context, _ string, _ time.Time) ([4]time
 	defer f.mu.Unlock()
 	return f.previewResp, f.previewErr
 }
+
+// drainBatch invokes a tea.Cmd whose result is a tea.BatchMsg, running
+// each leaf cmd concurrently and waiting for them all to return. Run /
+// submit dispatches batch the work cmd with the loading-indicator's
+// initial tick cmd, so tests that previously observed the work cmd
+// through cmd() now have to unwrap the batch.
+func drainBatch(cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(c tea.Cmd) {
+			defer wg.Done()
+			_ = c()
+		}(c)
+	}
+	wg.Wait()
+}
+
+// extractMsg invokes the leaf cmds of cmd (unwrapping a tea.BatchMsg if
+// needed) and returns the first message of type T it finds. Lets tests
+// that previously asserted on cmd()'s direct result keep their semantic
+// when the dispatch is now batched with the loading-indicator's tick.
+func extractMsg[T tea.Msg](cmd tea.Cmd) (T, bool) {
+	var zero T
+	if cmd == nil {
+		return zero, false
+	}
+	msg := cmd()
+	if t, ok := msg.(T); ok {
+		return t, true
+	}
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c == nil {
+				continue
+			}
+			sub := c()
+			if t, ok := sub.(T); ok {
+				return t, true
+			}
+		}
+	}
+	return zero, false
+}
+
+// startBatch is the async variant: it unwraps the BatchMsg and launches
+// each leaf cmd in its own goroutine without waiting. Returns a sync.WaitGroup
+// the caller can use to coordinate cleanup. Used by tests that need to
+// observe a long-running cmd in flight (e.g. the cancel-flow tests).
+func startBatch(cmd tea.Cmd) (*sync.WaitGroup, []tea.Cmd) {
+	var wg sync.WaitGroup
+	if cmd == nil {
+		return &wg, nil
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return &wg, nil
+	}
+	leaves := make([]tea.Cmd, 0, len(batch))
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		leaves = append(leaves, c)
+		wg.Add(1)
+		go func(c tea.Cmd) {
+			defer wg.Done()
+			_ = c()
+		}(c)
+	}
+	return &wg, leaves
+}
