@@ -135,13 +135,16 @@ SR cache and Review Mode rebuilds the timeline from those notes.
 ### Project layout
 
 ```
-cmd/leetcode-anki/main.go      single binary entry; wires auth → client → cache → reviews → TUI
-internal/auth/                 chromedp browser login + creds cache
-internal/leetcode/             GraphQL + REST client (questions, lists, run, submit, submissions, notes)
-internal/render/               HTML → markdown for problem descriptions
-internal/editor/               solution scaffolding + tea.ExecProcess editor invocation
-internal/sr/                   spaced-repetition scheduler (SM-2) + on-disk cache
-internal/tui/                  Bubble Tea root model + four screens
+cmd/leetcode-anki/main.go        single binary entry; wires auth → client → cache → reviews → TUI
+cmd/leetcode-test-login/main.go  populates test-account creds for the live contract suite
+internal/auth/                   chromedp browser login + creds cache (incl. test-creds path)
+internal/leetcode/               GraphQL + REST client (questions, lists, run, submit, submissions, notes)
+internal/leetcode/leetcodefake/  method-level fake of *Client; shared by unit + contract tests
+internal/leetcode/contracttest/  shape-invariant contract suite + LoadTestCreds for live runs
+internal/render/                 HTML → markdown for problem descriptions
+internal/editor/                 solution scaffolding + tea.ExecProcess editor invocation
+internal/sr/                     spaced-repetition scheduler (SM-2) + on-disk cache
+internal/tui/                    Bubble Tea root model + four screens
 ```
 
 ### Key decisions
@@ -182,6 +185,15 @@ This makes resuming work after `q` safe by default.
 Wrapping an exec command in `tea.Sequence` to set state first does not
 reliably deliver the state-setting message before exec takes the terminal —
 set state in `Update`, then return only the exec `tea.Cmd`.
+
+**Fakes-and-contracts for the LeetCode client.**
+A single contract suite (`internal/leetcode/contracttest`) of shape-invariant
+assertions runs against both a method-level fake
+(`internal/leetcode/leetcodefake`) on every `go test ./...` and the real
+LeetCode API behind `-tags integration`. When LeetCode's GraphQL schema
+drifts, the live side fails and the fake stays passing as a regression
+marker — the early-warning system the working notes below have always
+needed.
 
 ### LeetCode API gotchas
 
@@ -225,14 +237,37 @@ go vet ./...
 go build ./...
 ```
 
-No integration tests exist yet. The `integration` build tag is reserved for
-tests that hit real LeetCode — when the first one lands it goes in a
-`//go:build integration` file and runs via `go test -tags=integration ./...`,
-off by default.
-
 `LEETCODE_DEBUG=1` enables raw GraphQL response logging to
 `$UserCacheDir/leetcode-anki/debug.log` — useful when LeetCode's schema
 shifts and a query starts returning `null` for a previously-populated field.
+
+### Live contract test against LeetCode
+
+`internal/leetcode/contracttest/` runs the same shape-invariant assertions
+against a fake (every fast `go test ./...`) and the real LeetCode API
+(behind `-tags integration`). The live side needs a **dedicated test
+account** so writes don't leak into your personal profile.
+
+One-time setup:
+
+1. Create a fresh leetcode.com account (don't reuse your personal one).
+2. Add the "Two Sum" problem to its Favorite Questions list.
+3. `go run ./cmd/leetcode-test-login` and complete the browser login as
+   the test account. Cookies land in
+   `<UserConfigDir>/leetcode-anki/test-creds.json` (mode 0600).
+
+Run:
+
+```sh
+go test -tags integration ./internal/leetcode/...
+```
+
+The GitHub Actions workflow at `.github/workflows/live-contract.yml`
+runs the live contract on PRs and pushes to `main` that touch
+`internal/leetcode/**` or `internal/auth/**`, plus a daily 07:00 UTC
+cron. CI auth comes from `LEETCODE_TEST_SESSION` / `LEETCODE_TEST_CSRF`
+repo secrets — see [CLAUDE.md](CLAUDE.md) for the secret-refresh
+process when LeetCode's session cookie expires.
 
 ### Conventions
 
