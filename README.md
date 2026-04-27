@@ -169,6 +169,27 @@ set state in `Update`, then return only the exec `tea.Cmd`.
 - Run/submit poll `/submissions/detail/{id}/check/` until
   `state == "SUCCESS"`.
 
+## Known limitations
+
+### Credentials at rest
+
+The `LEETCODE_SESSION` and `csrftoken` cookies are persisted as a 0600
+JSON file at `$UserConfigDir/leetcode-anki/creds.json`. `Save` writes
+the file with mode 0600 (parent dir 0700) and `Load` refuses to read
+the file if its mode is wider than 0600, so another local user can't
+silently consume the session — but the cookies themselves are still
+plaintext on disk.
+
+A backlog item is to persist via the OS keyring
+(macOS Keychain / Linux Secret Service / Windows Credential Manager)
+with the 0600 file kept as a fallback when the keyring is unavailable.
+The reason it isn't done yet is the macOS UX: Keychain prompts the
+user for permission on first read, and unsigned binaries get re-prompted,
+which is a meaningful regression for a TUI workflow. If you want to
+harden now, manually move the cookies into Keychain and unset the
+file — the next auth flow will recreate the file unless the keyring
+backend lands.
+
 ## Development
 
 ```sh
