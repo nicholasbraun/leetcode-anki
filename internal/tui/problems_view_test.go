@@ -205,10 +205,10 @@ func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 	}
 }
 
-// On Accepted, the verdict-detection site must hand off to SR with the
-// just-completed submission's ID — that ID is what attaches a future
-// [anki:N] tag to the right submission.
-func TestSubmitAcceptedRecordsReview(t *testing.T) {
+// On Accepted, the verdict-detection site no longer eagerly Records:
+// the rating modal owns the Record call so the rating reflects the
+// user's actual grade, not the system's "Accepted = Good" guess.
+func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 	fc := &fakeClient{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
@@ -222,18 +222,11 @@ func TestSubmitAcceptedRecordsReview(t *testing.T) {
 		SubmissionID: "1988694277",
 	}})
 
-	if len(fr.records) != 1 {
-		t.Fatalf("expected 1 SR Record call, got %d", len(fr.records))
+	if len(fr.records) != 0 {
+		t.Errorf("expected 0 SR Record calls (deferred to rating modal), got %d", len(fr.records))
 	}
-	rec := fr.records[0]
-	if rec.slug != "a" {
-		t.Errorf("slug = %q, want %q", rec.slug, "a")
-	}
-	if rec.submissionID != "1988694277" {
-		t.Errorf("submissionID = %q, want %q", rec.submissionID, "1988694277")
-	}
-	if rec.rating != 0 {
-		t.Errorf("rating = %d, want 0 (implicit until grading UI lands)", rec.rating)
+	if m.result.grade == nil {
+		t.Fatal("expected rating modal to be open after Accepted submit")
 	}
 }
 

@@ -265,11 +265,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.result != nil && msg.result.StatusMsg == "Accepted" && m.currentProblem != nil {
 			slug := m.currentProblem.TitleSlug
 			m.markSolved(slug)
-			// Rating 0 = implicit "Accepted is Good"; an explicit-grading
-			// screen can later set rating!=0 here. SR errors are swallowed
-			// because the feature is auxiliary — a failed cache write must
-			// not block the user from continuing to work.
-			_ = m.reviews.Record(m.ctx, slug, msg.result.SubmissionID, 0, time.Now())
+			// Defer Record to the rating modal so the user's actual grade
+			// (1-4) is what gets stored, not the system's "Accepted = Good"
+			// guess. Preview errors are swallowed: empty previews render as
+			// "—" rather than blocking the modal.
+			previews, _ := m.reviews.Preview(m.ctx, slug, time.Now())
+			m.result.grade = &gradeModalState{cursor: 2, previews: previews}
 		}
 		return m, nil
 	}
