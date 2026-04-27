@@ -21,8 +21,8 @@ type interpretResponse struct {
 // dataInput should be the raw test input string — typically `problem.ExampleTestcases`
 // or a custom string from the user.
 func (c *Client) InterpretSolution(ctx context.Context, slug, lang, questionID, code, dataInput string) (*RunResult, error) {
-	url := fmt.Sprintf("%s/problems/%s/interpret_solution/", BaseURL, slug)
-	referer := fmt.Sprintf("%s/problems/%s/", BaseURL, slug)
+	url := interpretURL(slug)
+	referer := problemRefURL(slug)
 
 	body := map[string]any{
 		"lang":        lang,
@@ -61,7 +61,7 @@ func (c *Client) InterpretSolution(ctx context.Context, slug, lang, questionID, 
 // A hard iteration cap prevents an infinite loop if the API ever returns an
 // empty body (state=="").
 func (c *Client) pollCheck(ctx context.Context, id string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/submissions/detail/%s/check/", BaseURL, id)
+	url := submissionCheckURL(id)
 	referer := BaseURL + "/"
 
 	delay := 700 * time.Millisecond

@@ -78,7 +78,7 @@ func (c *Client) FavoriteQuestionList(ctx context.Context, slug string, skip, li
 		},
 	}
 
-	referer := fmt.Sprintf("%s/problem-list/%s/", BaseURL, slug)
+	referer := problemListRefURL(slug)
 	data, err := c.doGraphQL(ctx, "favoriteQuestionList", favoriteQuestionListQuery, vars, referer)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ query questionData($titleSlug: String!) {
 // ProblemDetail fetches the full content (description, code snippets, etc.) of a single Problem.
 func (c *Client) ProblemDetail(ctx context.Context, titleSlug string) (*ProblemDetail, error) {
 	vars := map[string]any{"titleSlug": titleSlug}
-	referer := fmt.Sprintf("%s/problems/%s/", BaseURL, titleSlug)
+	referer := problemRefURL(titleSlug)
 
 	data, err := c.doGraphQL(ctx, "questionData", questionDetailQuery, vars, referer)
 	if err != nil {

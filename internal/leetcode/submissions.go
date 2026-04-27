@@ -48,7 +48,7 @@ func (c *Client) SubmissionList(ctx context.Context, slug, nextKey string, limit
 		"limit":        limit,
 		"lastKey":      lastKeyVar,
 	}
-	referer := fmt.Sprintf("%s/problems/%s/submissions/", BaseURL, slug)
+	referer := submissionsRefURL(slug)
 
 	data, err := c.doGraphQL(ctx, "submissionList", submissionListQuery, vars, referer)
 	if err != nil {

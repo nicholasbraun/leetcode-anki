@@ -12,8 +12,8 @@ type submitResponse struct {
 
 // Submit posts the solution to LeetCode and polls for the final verdict.
 func (c *Client) Submit(ctx context.Context, slug, lang, questionID, code string) (*SubmitResult, error) {
-	url := fmt.Sprintf("%s/problems/%s/submit/", BaseURL, slug)
-	referer := fmt.Sprintf("%s/problems/%s/", BaseURL, slug)
+	url := submitURL(slug)
+	referer := problemRefURL(slug)
 
 	body := map[string]any{
 		"lang":        lang,
