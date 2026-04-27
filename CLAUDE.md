@@ -61,3 +61,23 @@ Follow the `comment` skill rules (based on Ousterhout's *A Philosophy of Softwar
 - **`go test ./...` must pass before every commit.** No skipping with `t.Skip` for "I'll fix it later".
 - New code carrying real branching logic — state machines, merge/dedup, schema decoders, retry/backoff — ships with tests in the same commit.
 - Tests live next to the code (`run_test.go` next to `run.go`). Integration-style tests that hit real LeetCode go in a build-tagged file (`//go:build integration`) and are off by default.
+
+#### Live contract test against LeetCode
+
+The live contract exercises every `*leetcode.Client` method — reads, run, submit, and note updates — against the real LeetCode API. Both fake-side (`TestContract_Fake`, default suite) and live-side (`TestContract_Live`, `integration` build tag) runs share one `contracttest.ContractTest` definition; if the live side starts failing, LeetCode changed something user-visible.
+
+Use a dedicated test account so writes don't leak into your personal profile. One-time setup:
+
+1. Create a fresh leetcode.com account (don't reuse your personal one).
+2. Add the "Two Sum" problem to that account's "Favorite Questions" list.
+3. Run `go run ./cmd/leetcode-test-login` and complete login as the test account. Cookies land in `<UserConfigDir>/leetcode-anki/test-creds.json`.
+
+Run the live contract:
+
+```
+go test -tags integration ./internal/leetcode/...
+```
+
+Each run submits the fixture's known passing solution to LeetCode's judge, which adds an entry to the test account's submission history. That's expected — the test account exists to absorb that — but don't run the live contract on a tight loop. Re-run `leetcode-test-login` when the session cookie expires.
+
+CI alternative: set `LEETCODE_TEST_SESSION` and `LEETCODE_TEST_CSRF` env vars; `contracttest.LoadTestCreds` prefers env over the file when both are present.
