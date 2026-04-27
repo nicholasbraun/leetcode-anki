@@ -22,7 +22,6 @@ func TestContract_Fake(t *testing.T) {
 
 func twoSumFixture() contracttest.Fixture {
 	return contracttest.Fixture{
-		KnownListSlug:    "favorite",
 		KnownProblemSlug: "two-sum",
 		KnownQuestionID:  "1",
 		PassingSolution: contracttest.PassingSolution{
@@ -42,12 +41,13 @@ func twoSumFixture() contracttest.Fixture {
 }
 
 func seedFake(fx contracttest.Fixture) *leetcodefake.Fake {
+	const fakeListSlug = "fake-favorites"
 	return &leetcodefake.Fake{
 		Lists: []leetcode.FavoriteList{
-			{Slug: fx.KnownListSlug, Name: "Favorite Questions", QuestionCount: 1},
+			{Slug: fakeListSlug, Name: "Favorite Questions", QuestionCount: 1},
 		},
 		Questions: map[string][]leetcode.Question{
-			fx.KnownListSlug: {
+			fakeListSlug: {
 				{
 					ID:                 1,
 					QuestionFrontendID: "1",

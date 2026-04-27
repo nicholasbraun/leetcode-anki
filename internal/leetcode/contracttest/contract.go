@@ -8,6 +8,7 @@ package contracttest
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"leetcode-anki/internal/leetcode"
@@ -41,9 +42,14 @@ type PassingSolution struct {
 // must satisfy before ContractTest can pass. The real client's account
 // is set up to match this fixture (see the live-contract docs); the fake
 // is seeded to match.
+//
+// Note that the list slug is *not* part of the fixture: the default
+// "Favorite Questions" list LeetCode gives every account has an opaque,
+// account-specific slug, so ContractTest discovers it at runtime by
+// picking the first list with ≥1 question. KnownProblemSlug must be a
+// member of whichever list that turns out to be.
 type Fixture struct {
-	KnownListSlug    string // a list the account owns; must contain ≥1 question
-	KnownProblemSlug string // a problem in that list (e.g. "two-sum")
+	KnownProblemSlug string // a problem in some list (e.g. "two-sum")
 	KnownQuestionID  string // numeric question_id for KnownProblemSlug; required by run/submit
 	PassingSolution  PassingSolution
 	NoteText         string // fixed value the note-update subtest writes; idempotent across runs
@@ -58,6 +64,11 @@ type Fixture struct {
 func ContractTest(t *testing.T, api API, fx Fixture) {
 	t.Helper()
 	ctx := context.Background()
+
+	// Discovered in MyFavoriteLists/has-content, consumed by
+	// FavoriteQuestionList/known-list-has-questions. Subtests are
+	// sequential so a closure-captured value is safe here.
+	var listSlugWithContent string
 
 	t.Run("MyFavoriteLists/has-content", func(t *testing.T) {
 		lists, err := api.MyFavoriteLists(ctx)
@@ -74,24 +85,37 @@ func ContractTest(t *testing.T, api API, fx Fixture) {
 			if l.Name == "" {
 				t.Errorf("lists[%d].Name is empty", i)
 			}
+			if listSlugWithContent == "" && l.QuestionCount > 0 {
+				listSlugWithContent = l.Slug
+			}
+		}
+		if listSlugWithContent == "" {
+			t.Fatal("no list with QuestionCount > 0; add a problem to one list")
 		}
 	})
 
 	t.Run("FavoriteQuestionList/known-list-has-questions", func(t *testing.T) {
-		res, err := api.FavoriteQuestionList(ctx, fx.KnownListSlug, 0, 50)
+		if listSlugWithContent == "" {
+			t.Skip("MyFavoriteLists subtest didn't resolve a slug")
+		}
+		res, err := api.FavoriteQuestionList(ctx, listSlugWithContent, 0, 50)
 		if err != nil {
-			t.Fatalf("FavoriteQuestionList(%q): %v", fx.KnownListSlug, err)
+			t.Fatalf("FavoriteQuestionList(%q): %v", listSlugWithContent, err)
 		}
 		if res == nil || len(res.Questions) == 0 {
-			t.Fatalf("list %q is empty; fixture requires ≥1 question", fx.KnownListSlug)
+			t.Fatalf("list %q is empty; fixture requires ≥1 question", listSlugWithContent)
 		}
-		valid := map[string]bool{"Easy": true, "Medium": true, "Hard": true}
+		// LeetCode's GraphQL response varies the difficulty's case:
+		// the favorites query returns "EASY" while ProblemDetail returns
+		// "Easy". Production styling already case-folds (see
+		// tui.difficultyStyle) — match that here.
+		valid := map[string]bool{"easy": true, "medium": true, "hard": true}
 		for i, q := range res.Questions {
 			if q.TitleSlug == "" {
 				t.Errorf("questions[%d].TitleSlug is empty", i)
 			}
-			if !valid[q.Difficulty] {
-				t.Errorf("questions[%d].Difficulty = %q, want Easy/Medium/Hard", i, q.Difficulty)
+			if !valid[strings.ToLower(q.Difficulty)] {
+				t.Errorf("questions[%d].Difficulty = %q, want Easy/Medium/Hard (any case)", i, q.Difficulty)
 			}
 		}
 	})
@@ -200,7 +224,13 @@ func ContractTest(t *testing.T, api API, fx Fixture) {
 		if submissionID == "" {
 			t.Skip("no SubmissionID captured from Submit")
 		}
-		if err := api.UpdateSubmissionNote(ctx, submissionID, fx.NoteText, nil, ""); err != nil {
+		// LeetCode's SubmissionFlagTypeEnum rejects empty strings — a
+		// fresh submission's FlagType is "WHITE" (see SubmissionList
+		// fixtures). Production code round-trips this from a prior
+		// SubmissionList read; the contract takes the shortcut of using
+		// the known default since it's not testing the round-trip
+		// pattern itself, just that the mutation accepts a valid input.
+		if err := api.UpdateSubmissionNote(ctx, submissionID, fx.NoteText, nil, "WHITE"); err != nil {
 			t.Errorf("UpdateSubmissionNote: %v", err)
 		}
 	})
