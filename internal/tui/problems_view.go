@@ -123,6 +123,34 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	fmt.Fprint(w, left+strings.Repeat(" ", gap)+diff)
 }
 
+// reviewFooterHint returns the verb that completes the 'v' footer entry,
+// flipping with the current mode so the hint always describes the action,
+// not the current state.
+func reviewFooterHint(reviewMode bool) string {
+	if reviewMode {
+		return "explore"
+	}
+	return "review"
+}
+
+// rebuildProblemsList re-derives the problems list view from problemsAll
+// using the current reviewMode + dueSlugs. Used when 'v' toggles Review/
+// Explore on the problems screen so the user sees the new filter
+// applied without losing their place.
+func rebuildProblemsList(m *Model) {
+	w := m.width
+	if w < 20 {
+		w = 80
+	}
+	h := m.height
+	if h < 7 {
+		h = 24
+	}
+	lw, lh, _, _ := problemsLayout(w, h)
+	visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
+	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
+}
+
 func newProblemsList(width, height int, qs []leetcode.Question, listName string, drafts map[string]bool) list.Model {
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
@@ -143,7 +171,6 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
 			case keyMatch(km, keys.Back):
-				m.reviewMode = false
 				m.screen = screenLists
 				return m, nil
 			}
@@ -156,9 +183,20 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
 			case keyMatch(km, keys.Back):
-				m.reviewMode = false
 				m.screen = screenLists
 				return m, nil
+			case keyMatch(km, keys.Review):
+				m.reviewMode = !m.reviewMode
+				// First Explore→Review for this list: dueSlugs hasn't been
+				// computed yet, so re-fire the load to fan out Status calls.
+				// Subsequent toggles use the cached dueSlugs synchronously.
+				if m.reviewMode && m.dueSlugs == nil {
+					m.problemsLoading = true
+					m.err = nil
+					return m, loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviews)
+				}
+				rebuildProblemsList(m)
+				return m, syncPreviewCursor(m)
 			case keyMatch(km, keys.Enter):
 				if it, ok := m.problems.SelectedItem().(problemItem); ok {
 					if it.q.PaidOnly {
@@ -213,7 +251,7 @@ func viewProblemsView(m *Model) string {
 	var label string
 	count := len(m.problems.Items())
 	if m.reviewMode {
-		crumbs = breadcrumb(w, "leetcode-anki", "review mode")
+		crumbs = breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name, "review mode")
 		label = fmt.Sprintf("Due for review  (%d)", count)
 	} else {
 		crumbs = breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name)
@@ -222,11 +260,20 @@ func viewProblemsView(m *Model) string {
 	foot := footer(w,
 		footerItem{"j/k", "move"},
 		footerItem{"enter", "open"},
+		footerItem{"v", reviewFooterHint(m.reviewMode)},
 		footerItem{"/", "filter"},
 		footerItem{"pgup/pgdn", "scroll"},
 		footerItem{"esc", "back"},
 		footerItem{"q", "quit"},
 	)
+
+	// Empty-state in Review Mode: a non-empty list with zero due Problems
+	// is meaningfully different from a list that failed to load — render
+	// a hint so the user knows to toggle back to Explore Mode.
+	listBody := m.problems.View()
+	if m.reviewMode && count == 0 && len(m.problemsAll) > 0 {
+		listBody = helpStyle.Render("Nothing due in this list — press 'v' to switch to Explore Mode")
+	}
 
 	if previewW <= 0 {
 		top := divider(w, label, 0, "")
@@ -235,7 +282,7 @@ func viewProblemsView(m *Model) string {
 			crumbs,
 			"",
 			top,
-			m.problems.View(),
+			listBody,
 			bot,
 			foot,
 		}, "\n")
@@ -244,7 +291,7 @@ func viewProblemsView(m *Model) string {
 	top := divider(w, label, listW, "╮")
 	bot := divider(w, "", listW, "┴")
 
-	listBox := lipgloss.NewStyle().Width(listW).Render(m.problems.View())
+	listBox := lipgloss.NewStyle().Width(listW).Render(listBody)
 	vlines := make([]string, listH)
 	for i := range vlines {
 		vlines[i] = dividerLineStyle.Render("│")

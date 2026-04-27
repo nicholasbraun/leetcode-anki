@@ -144,9 +144,16 @@ func (e *fakeEditor) queueDone(msg editor.EditorDoneMsg) {
 // assertions can verify the verdict-detection site invokes SR with the
 // right slug, submission ID, and rating.
 type fakeReviews struct {
-	mu      sync.Mutex
+	mu sync.Mutex
+
 	records []recordCall
-	status  sr.Status
+
+	// statusBySlug overrides status per slug; missing keys fall back to status.
+	// Lets a single test stage "two-sum is due, three-sum isn't" without
+	// rewiring every fakeReviews call site that uses the simpler default.
+	statusBySlug map[string]sr.Status
+	status       sr.Status
+
 	dueResp []sr.DueProblem
 	err     error
 }
@@ -166,9 +173,12 @@ func (f *fakeReviews) Record(_ context.Context, slug, submissionID string, ratin
 	return f.err
 }
 
-func (f *fakeReviews) Status(_ context.Context, _ string, _ time.Time) (sr.Status, error) {
+func (f *fakeReviews) Status(_ context.Context, slug string, _ time.Time) (sr.Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if s, ok := f.statusBySlug[slug]; ok {
+		return s, f.err
+	}
 	return f.status, f.err
 }
 

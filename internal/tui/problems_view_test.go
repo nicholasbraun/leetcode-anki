@@ -13,15 +13,19 @@ import (
 )
 
 type fakeClient struct {
-	details map[string]*leetcode.ProblemDetail
-	calls   []string
+	details   map[string]*leetcode.ProblemDetail
+	questions map[string][]leetcode.Question
+	calls     []string
 }
 
 func (f *fakeClient) MyFavoriteLists(ctx context.Context) ([]leetcode.FavoriteList, error) {
 	return nil, nil
 }
 func (f *fakeClient) FavoriteQuestionList(ctx context.Context, slug string, skip, limit int) (*leetcode.FavoriteQuestionListResult, error) {
-	return nil, nil
+	if qs, ok := f.questions[slug]; ok {
+		return &leetcode.FavoriteQuestionListResult{Questions: qs}, nil
+	}
+	return &leetcode.FavoriteQuestionListResult{}, nil
 }
 func (f *fakeClient) Question(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error) {
 	f.calls = append(f.calls, titleSlug)

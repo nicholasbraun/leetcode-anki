@@ -48,9 +48,9 @@ type Model struct {
 	listsReady   bool
 	listsLoading bool
 
-	// reviewMode indicates the problems screen is showing due Problems
-	// (Review Mode) rather than a Problem List's contents (Explore Mode).
-	// Set when entering via 'v' from the lists screen; cleared on Back.
+	// reviewMode is a sticky session toggle. When on, list screens render
+	// with a Review-Mode indicator and the problems screen filters to
+	// Problems currently due. Toggled by 'v' from any list-ish screen.
 	reviewMode bool
 
 	// Problems screen
@@ -61,6 +61,17 @@ type Model struct {
 	problemIndex    int
 	preview         previewState
 	solutionSlugs   map[string]bool
+
+	// problemsAll is the unfiltered slice loaded for currentList. The
+	// problems list view derives its items from this, optionally filtered
+	// through dueSlugs, so 'v' can flip Review/Explore without re-fetching.
+	problemsAll []leetcode.Question
+
+	// dueSlugs is the set of slugs in problemsAll currently due for review.
+	// Populated by loadProblemsCmd when reviewMode is on at load time;
+	// nil when the load happened in Explore Mode (no SR work was done).
+	// Cleared whenever a different list is loaded.
+	dueSlugs map[string]bool
 
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
@@ -172,7 +183,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.solutionSlugs == nil {
 			m.solutionSlugs = map[string]bool{}
 		}
-		m.problems = newProblemsList(lw, lh, msg.questions, m.currentList.Name, m.solutionSlugs)
+		m.problemsAll = msg.questions
+		m.dueSlugs = msg.dueSlugs
+		visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
+		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
 		m.problemsReady = true
 		m.problemIndex = 0
 		m.preview = previewState{}
@@ -334,6 +348,25 @@ func keyMatch(m tea.KeyMsg, b key.Binding) bool {
 	return key.Matches(m, b)
 }
 
+// visibleProblems is the projection from the unfiltered list to whatever
+// the problems screen should currently show. Explore Mode passes the
+// slice through; Review Mode keeps only Problems whose slug is in
+// dueSlugs. A nil dueSlugs in Review Mode means the load was made before
+// SR data was available — fall back to the full list rather than render
+// an empty pane.
+func visibleProblems(all []leetcode.Question, reviewMode bool, dueSlugs map[string]bool) []leetcode.Question {
+	if !reviewMode || dueSlugs == nil {
+		return all
+	}
+	out := make([]leetcode.Question, 0, len(dueSlugs))
+	for _, q := range all {
+		if dueSlugs[q.TitleSlug] {
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
 // markSolved updates the in-memory list and the open problem-view to AC
 // after a successful submit. The favorites-list query isn't re-fetched
 // during a session, so without this the row stays at its load-time status
@@ -400,6 +433,12 @@ type listsLoadedMsg struct {
 type problemsLoadedMsg struct {
 	questions []leetcode.Question
 	drafts    map[string]bool
+	// dueSlugs is the set of currently-due slugs computed by loadProblemsCmd
+	// when reviewMode was on at load time. Nil when the load happened in
+	// Explore Mode (no SR fan-out). Used by the Update handler to filter
+	// the rendered list and retained on the model so 'v' toggles can
+	// re-render without re-fetching.
+	dueSlugs map[string]bool
 }
 
 type problemLoadedMsg struct {
@@ -428,16 +467,44 @@ func loadListsCmd(parent context.Context, c LeetcodeClient) tea.Cmd {
 	}
 }
 
-func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string) tea.Cmd {
+// loadProblemsCmd fetches the list contents and, when reviewMode is true,
+// also computes the set of due slugs in one round-trip. Non-AC slugs
+// short-circuit without an SR call so the fan-out is bounded to AC
+// Problems in this list. Per-slug Status errors are swallowed (the slug
+// is just omitted from dueSlugs) so a single SR failure can't collapse
+// the screen.
+func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string, reviewMode bool, reviews sr.Reviews) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
+		timeout := defaultTimeout
+		if reviewMode {
+			timeout = reviewTimeout
+		}
+		ctx, cancel := context.WithTimeout(parent, timeout)
 		defer cancel()
 		res, err := c.FavoriteQuestionList(ctx, slug, 0, 500)
 		if err != nil {
 			return errMsg{err}
 		}
 		drafts, _ := cache.SlugsWith()
-		return problemsLoadedMsg{questions: res.Questions, drafts: drafts}
+
+		var dueSlugs map[string]bool
+		if reviewMode {
+			now := time.Now()
+			dueSlugs = map[string]bool{}
+			for _, q := range res.Questions {
+				if !isAccepted(q.Status) {
+					continue
+				}
+				st, err := reviews.Status(ctx, q.TitleSlug, now)
+				if err != nil {
+					continue
+				}
+				if st.Due(now) {
+					dueSlugs[q.TitleSlug] = true
+				}
+			}
+		}
+		return problemsLoadedMsg{questions: res.Questions, drafts: drafts, dueSlugs: dueSlugs}
 	}
 }
 
@@ -481,37 +548,6 @@ func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p
 		return runResultMsg{result: res}
 	}
 	return cmd, cancel
-}
-
-// loadReviewCmd fetches the due Problems via sr.Reviews.Due and converts
-// them into the synthesized Question shape the problems screen expects.
-// Cold-cache loads can be slow (one SubmissionList per AC Problem) — the
-// timeout budget is widened accordingly.
-func loadReviewCmd(parent context.Context, reviews sr.Reviews, cache SolutionCache) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(parent, reviewTimeout)
-		defer cancel()
-
-		due, err := reviews.Due(ctx, time.Now())
-		if err != nil {
-			return errMsg{err}
-		}
-
-		ac := "AC"
-		questions := make([]leetcode.Question, 0, len(due))
-		for _, d := range due {
-			questions = append(questions, leetcode.Question{
-				TitleSlug:          d.TitleSlug,
-				Title:              d.Title,
-				QuestionFrontendID: d.FrontendID,
-				Difficulty:         d.Difficulty,
-				Status:             &ac,
-			})
-		}
-
-		drafts, _ := cache.SlugsWith()
-		return problemsLoadedMsg{questions: questions, drafts: drafts}
-	}
 }
 
 func submitCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {

@@ -89,17 +89,14 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			case keyMatch(km, keys.Quit):
 				return m, tea.Quit
 			case keyMatch(km, keys.Review):
-				m.reviewMode = true
-				m.problemsLoading = true
-				m.err = nil
-				return m, loadReviewCmd(m.ctx, m.reviews, m.cache)
+				m.reviewMode = !m.reviewMode
+				return m, nil
 			case keyMatch(km, keys.Enter):
 				if it, ok := m.lists.SelectedItem().(listItem); ok {
-					m.reviewMode = false
 					m.currentList = it.fav
 					m.problemsLoading = true
 					m.err = nil
-					return m, loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug)
+					return m, loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug, m.reviewMode, m.reviews)
 				}
 			}
 		}
@@ -114,13 +111,18 @@ func viewListsView(m *Model) string {
 		w = 80
 	}
 
-	crumbs := breadcrumb(w, "leetcode-anki", "lists")
+	var crumbs string
+	if m.reviewMode {
+		crumbs = breadcrumb(w, "leetcode-anki", "lists", "review mode")
+	} else {
+		crumbs = breadcrumb(w, "leetcode-anki", "lists")
+	}
 	top := divider(w, "My Lists", 0, "")
 	bottom := divider(w, "", 0, "")
 	foot := footer(w,
 		footerItem{"j/k", "move"},
 		footerItem{"enter", "open"},
-		footerItem{"v", "review"},
+		footerItem{"v", reviewFooterHint(m.reviewMode)},
 		footerItem{"/", "filter"},
 		footerItem{"q", "quit"},
 	)

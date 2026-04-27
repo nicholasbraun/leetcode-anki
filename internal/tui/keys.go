@@ -35,5 +35,5 @@ var keys = keyMap{
 	Help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	PreviewUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "preview up")),
 	PreviewDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "preview down")),
-	Review:      key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "review mode")),
+	Review:      key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "toggle review mode")),
 }
