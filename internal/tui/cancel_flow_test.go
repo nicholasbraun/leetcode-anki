@@ -21,7 +21,7 @@ func blockingFake() (fake *leetcodefake.Fake, started, done chan struct{}, err *
 	done = make(chan struct{})
 	err = new(error)
 	fake = &leetcodefake.Fake{}
-	fake.RunHook = func(ctx context.Context, _, _, _, _, _ string) (*leetcode.RunResult, error) {
+	fake.RunHook = func(ctx context.Context, _, _, _, _, _, _ string) (*leetcode.RunResult, error) {
 		close(started)
 		<-ctx.Done()
 		*err = ctx.Err()

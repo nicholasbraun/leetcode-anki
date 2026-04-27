@@ -57,23 +57,42 @@ type ProblemDetail struct {
 }
 
 // RunResult is the verdict from `interpret_solution` after polling.
+//
+// Cases is materialized client-side from parallel arrays on the wire
+// (`code_answer`, `expected_code_answer`, `std_output_list`,
+// `compare_result`) plus the dataInput that was submitted, so the
+// renderer iterates one slice instead of zipping arrays. Empty for
+// CompileError / RuntimeError verdicts where no case ran.
 type RunResult struct {
-	State              string   `json:"state"`
-	StatusCode         int      `json:"status_code"`
-	StatusMsg          string   `json:"status_msg"`
-	StatusRuntime      string   `json:"status_runtime"`
-	StatusMemory       string   `json:"status_memory"`
-	Lang               string   `json:"lang"`
-	RunSuccess         bool     `json:"run_success"`
-	CorrectAnswer      bool     `json:"correct_answer"`
-	CodeAnswer         []string `json:"code_answer"`
-	ExpectedCodeAnswer []string `json:"expected_code_answer"`
-	StdOutput          string   `json:"std_output"`
-	CompileError       string   `json:"compile_error"`
-	FullCompileError   string   `json:"full_compile_error"`
-	RuntimeError       string   `json:"runtime_error"`
-	FullRuntimeError   string   `json:"full_runtime_error"`
-	LastTestcase       string   `json:"last_testcase"`
+	State            string    `json:"state"`
+	StatusCode       int       `json:"status_code"`
+	StatusMsg        string    `json:"status_msg"`
+	StatusRuntime    string    `json:"status_runtime"`
+	StatusMemory     string    `json:"status_memory"`
+	Lang             string    `json:"lang"`
+	RunSuccess       bool      `json:"run_success"`
+	CorrectAnswer    bool      `json:"correct_answer"`
+	Cases            []RunCase `json:"-"`
+	CompileError     string    `json:"compile_error"`
+	FullCompileError string    `json:"full_compile_error"`
+	RuntimeError     string    `json:"runtime_error"`
+	FullRuntimeError string    `json:"full_runtime_error"`
+	LastTestcase     string    `json:"last_testcase"`
+}
+
+// RunCase is one example test case as executed by a Run: the input the
+// judge fed to the Solution, what the Solution produced, what was
+// expected, and any stdout the Solution emitted while running.
+//
+// Pass is per-case truth; it is narrower than RunResult.CorrectAnswer,
+// which is the AND across every case.
+type RunCase struct {
+	Index    int
+	Input    string
+	Output   string
+	Expected string
+	Stdout   string
+	Pass     bool
 }
 
 // Submission is one historical entry from a Problem's submission list.

@@ -22,7 +22,7 @@ type LeetcodeClient interface {
 	MyFavoriteLists(ctx context.Context) ([]leetcode.FavoriteList, error)
 	FavoriteQuestionList(ctx context.Context, slug string, skip, limit int) (*leetcode.FavoriteQuestionListResult, error)
 	ProblemDetail(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error)
-	InterpretSolution(ctx context.Context, slug, lang, questionID, code, dataInput string) (*leetcode.RunResult, error)
+	InterpretSolution(ctx context.Context, slug, lang, questionID, code, dataInput, metaData string) (*leetcode.RunResult, error)
 	Submit(ctx context.Context, slug, lang, questionID, code string) (*leetcode.SubmitResult, error)
 }
 

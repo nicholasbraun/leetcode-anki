@@ -179,9 +179,9 @@ func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
 		return errorStyle.Render("⚠ Runtime Error"),
 			errBody(r.LastTestcase, r.FullRuntimeError, r.RuntimeError)
 	case !r.CorrectAnswer:
-		return errorStyle.Render("✗ Wrong Answer"), runWrongBody(r)
+		return errorStyle.Render("✗ Wrong Answer"), runBody(r)
 	default:
-		return successStyle.Render("✓ Accepted"), runAcceptedBody(r)
+		return successStyle.Render("✓ Accepted"), runBody(r)
 	}
 }
 
@@ -207,39 +207,60 @@ func submitHeaderAndBody(r *leetcode.SubmitResult) (string, string) {
 	}
 }
 
-func runAcceptedBody(r *leetcode.RunResult) string {
+// runBody renders the body for both Accepted and Wrong-Answer Run
+// Verdicts: a compact summary header followed by per-case blocks
+// (input, your output, expected, stdout). Compile / runtime branches
+// short-circuit upstream — they never carry Cases.
+func runBody(r *leetcode.RunResult) string {
 	rows := []string{}
+	if n := len(r.Cases); n > 0 {
+		rows = append(rows, kv("test cases", fmt.Sprintf("%d / %d passed", countPassed(r.Cases), n)))
+	}
 	if r.StatusRuntime != "" {
 		rows = append(rows, kv("runtime", r.StatusRuntime))
 	}
 	if r.StatusMemory != "" {
 		rows = append(rows, kv("memory", r.StatusMemory))
 	}
-	if n := len(r.CodeAnswer); n > 0 {
-		rows = append(rows, kv("test cases", fmt.Sprintf("%d ran", n)))
-	}
 	if r.Lang != "" {
 		rows = append(rows, kv("language", r.Lang))
 	}
-	if r.StdOutput != "" {
-		rows = append(rows, "", kv("stdout", ""), indent(r.StdOutput, 4))
+	for _, tc := range r.Cases {
+		rows = append(rows, "", runCaseBlock(tc))
 	}
 	return strings.Join(rows, "\n")
 }
 
-func runWrongBody(r *leetcode.RunResult) string {
-	rows := []string{}
-	if n := len(r.CodeAnswer); n > 0 {
-		rows = append(rows, kv("test cases ran", fmt.Sprintf("%d", n)))
+func countPassed(cs []leetcode.RunCase) int {
+	n := 0
+	for _, c := range cs {
+		if c.Pass {
+			n++
+		}
 	}
-	rows = append(rows, "")
-	rows = append(rows, kv("your output", ""))
-	rows = append(rows, indent(strings.Join(r.CodeAnswer, "\n"), 4))
-	rows = append(rows, "")
-	rows = append(rows, kv("expected output", ""))
-	rows = append(rows, indent(strings.Join(r.ExpectedCodeAnswer, "\n"), 4))
-	if r.StdOutput != "" {
-		rows = append(rows, "", kv("stdout", ""), indent(r.StdOutput, 4))
+	return n
+}
+
+// runCaseBlock formats one RunCase as a small labeled block. Empty
+// fields collapse — pass cases without stdout still print input /
+// your output / expected, so the layout is stable across cases.
+func runCaseBlock(c leetcode.RunCase) string {
+	header := fmt.Sprintf("  case %d", c.Index+1)
+	if c.Pass {
+		header += "    " + successStyle.Render("✓ pass")
+	} else {
+		header += "    " + errorStyle.Render("✗ fail")
+	}
+	rows := []string{header}
+	if c.Input != "" {
+		rows = append(rows, kv("input", ""), indent(c.Input, 4))
+	}
+	rows = append(rows, kv("your output", ""), indent(c.Output, 4))
+	if c.Expected != "" {
+		rows = append(rows, kv("expected", ""), indent(c.Expected, 4))
+	}
+	if c.Stdout != "" {
+		rows = append(rows, kv("stdout", ""), indent(c.Stdout, 4))
 	}
 	return strings.Join(rows, "\n")
 }

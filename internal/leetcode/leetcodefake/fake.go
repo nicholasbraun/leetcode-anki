@@ -31,7 +31,7 @@ type Fake struct {
 	DetailHook         func(ctx context.Context, slug string) (*leetcode.ProblemDetail, error)
 	SubmissionListHook func(ctx context.Context, slug, nextKey string, limit int) ([]leetcode.Submission, string, error)
 	ProgressHook       func(ctx context.Context, skip, limit int) ([]leetcode.ProgressQuestion, int, error)
-	RunHook            func(ctx context.Context, slug, lang, qid, code, in string) (*leetcode.RunResult, error)
+	RunHook            func(ctx context.Context, slug, lang, qid, code, in, meta string) (*leetcode.RunResult, error)
 	SubmitHook         func(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error)
 	UpdateNoteHook     func(ctx context.Context, submissionID, note string, tagIDs []int, flagType string) error
 
@@ -90,9 +90,9 @@ func (f *Fake) UserProgress(ctx context.Context, skip, limit int) ([]leetcode.Pr
 	return f.Progress, total, nil
 }
 
-func (f *Fake) InterpretSolution(ctx context.Context, slug, lang, qid, code, in string) (*leetcode.RunResult, error) {
+func (f *Fake) InterpretSolution(ctx context.Context, slug, lang, qid, code, in, meta string) (*leetcode.RunResult, error) {
 	if f.RunHook != nil {
-		return f.RunHook(ctx, slug, lang, qid, code, in)
+		return f.RunHook(ctx, slug, lang, qid, code, in, meta)
 	}
 	return f.RunResult, nil
 }

@@ -54,26 +54,44 @@ func TestRenderRunResult(t *testing.T) {
 			wantContain: []string{"no verdict"},
 		},
 		{
-			name: "accepted",
+			name: "accepted: every case shown with input/output/expected",
 			in: &leetcode.RunResult{
-				StatusMsg:          "Accepted",
-				CorrectAnswer:      true,
-				CodeAnswer:         []string{"[0,1]"},
-				ExpectedCodeAnswer: []string{"[0,1]"},
+				StatusMsg:     "Accepted",
+				CorrectAnswer: true,
+				Cases: []leetcode.RunCase{
+					{Index: 0, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+					{Index: 1, Input: "[3,2,4]\n6", Output: "[1,2]", Expected: "[1,2]", Pass: true},
+				},
 			},
-			wantContain: []string{"Accepted"},
-			wantAbsent:  []string{"Wrong Answer"},
+			wantContain: []string{
+				"Accepted",
+				"2 / 2 passed",
+				"case 1", "case 2",
+				"[2,7,11,15]", "[3,2,4]",
+				"your output", "[0,1]", "[1,2]",
+				"expected",
+			},
+			wantAbsent: []string{"Wrong Answer", "fail"},
 		},
 		{
-			name: "wrong answer despite status_msg=Accepted",
+			name: "wrong answer: per-case mismatch surfaces with stdout",
 			in: &leetcode.RunResult{
-				StatusMsg:          "Accepted",
-				CorrectAnswer:      false,
-				CodeAnswer:         []string{"[]"},
-				ExpectedCodeAnswer: []string{"[0,1]"},
+				StatusMsg:     "Accepted", // status from server; CorrectAnswer drives the verdict
+				CorrectAnswer: false,
+				Cases: []leetcode.RunCase{
+					{Index: 0, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+					{Index: 1, Input: "[3,2,4]\n6", Output: "[]", Expected: "[1,2]", Stdout: "visited 3", Pass: false},
+				},
 			},
-			wantContain: []string{"Wrong Answer", "your output", "expected output"},
-			wantAbsent:  []string{"Accepted"},
+			wantContain: []string{
+				"Wrong Answer",
+				"1 / 2 passed",
+				"case 1", "pass",
+				"case 2", "fail",
+				"your output", "expected",
+				"stdout", "visited 3",
+			},
+			wantAbsent: []string{"✓ Accepted"},
 		},
 		{
 			name: "compile error",

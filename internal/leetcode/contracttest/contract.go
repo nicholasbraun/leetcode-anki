@@ -23,7 +23,7 @@ type API interface {
 	ProblemDetail(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error)
 	SubmissionList(ctx context.Context, slug, nextKey string, limit int) ([]leetcode.Submission, string, error)
 	UserProgress(ctx context.Context, skip, limit int) ([]leetcode.ProgressQuestion, int, error)
-	InterpretSolution(ctx context.Context, slug, lang, qid, code, in string) (*leetcode.RunResult, error)
+	InterpretSolution(ctx context.Context, slug, lang, qid, code, in, meta string) (*leetcode.RunResult, error)
 	Submit(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error)
 	UpdateSubmissionNote(ctx context.Context, submissionID, note string, tagIDs []int, flagType string) error
 }
@@ -32,10 +32,15 @@ type API interface {
 // The same Code is reused by the InterpretSolution and Submit subtests so
 // re-runs against the live API are content-deduped by LeetCode's judge
 // (same hash → same verdict, no new judge work).
+//
+// MetaData is the problem's wire-format MetaData JSON (a `{"name", "params", "return"}`
+// blob). InterpretSolution forwards it so per-case input splitting can find
+// the parameter count; "" is acceptable but degrades the per-case input view.
 type PassingSolution struct {
-	Lang  string
-	Code  string
-	Input string // sample stdin for InterpretSolution, e.g. "[2,7,11,15]\n9"
+	Lang     string
+	Code     string
+	Input    string // sample stdin for InterpretSolution, e.g. "[2,7,11,15]\n9"
+	MetaData string
 }
 
 // Fixture names the test-account state both the fake and the real client
@@ -189,6 +194,7 @@ func ContractTest(t *testing.T, api API, fx Fixture) {
 			fx.KnownQuestionID,
 			fx.PassingSolution.Code,
 			fx.PassingSolution.Input,
+			fx.PassingSolution.MetaData,
 		)
 		if err != nil {
 			t.Fatalf("InterpretSolution: %v", err)
@@ -196,8 +202,17 @@ func ContractTest(t *testing.T, api API, fx Fixture) {
 		if res == nil {
 			t.Fatal("InterpretSolution returned nil RunResult")
 		}
-		// Verdict outcome doesn't matter — even Wrong Answer proves the
-		// poll loop and JSON decode worked end-to-end.
+		if len(res.Cases) == 0 {
+			t.Error("Cases is empty; per-case verdict materialization broken")
+		}
+		for i, c := range res.Cases {
+			if c.Output == "" {
+				t.Errorf("Cases[%d].Output is empty", i)
+			}
+			if c.Input == "" {
+				t.Errorf("Cases[%d].Input is empty; dataInput split lost the input", i)
+			}
+		}
 	})
 
 	var submissionID string

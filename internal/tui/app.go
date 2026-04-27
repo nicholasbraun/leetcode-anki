@@ -534,7 +534,7 @@ func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p
 		if err != nil {
 			return errMsg{err}
 		}
-		res, err := c.InterpretSolution(ctx, p.TitleSlug, langSlug, p.QuestionID, code, p.ExampleTestcases)
+		res, err := c.InterpretSolution(ctx, p.TitleSlug, langSlug, p.QuestionID, code, p.ExampleTestcases, p.MetaData)
 		if err != nil {
 			return errMsg{err}
 		}

@@ -34,7 +34,8 @@ func twoSumFixture() contracttest.Fixture {
                 return [seen[target-n], i]
             seen[n] = i
 `,
-			Input: "[2,7,11,15]\n9",
+			Input:    "[2,7,11,15]\n9",
+			MetaData: `{"name":"twoSum","params":[{"name":"nums","type":"integer[]"},{"name":"target","type":"integer"}],"return":{"type":"integer[]"}}`,
 		},
 		NoteText: "leetcode-anki contract test marker",
 	}
@@ -70,7 +71,13 @@ func seedFake(fx contracttest.Fixture) *leetcodefake.Fake {
 				},
 			},
 		},
-		RunResult:    &leetcode.RunResult{State: "SUCCESS", StatusCode: 10},
+		RunResult: &leetcode.RunResult{
+			State:      "SUCCESS",
+			StatusCode: 10,
+			Cases: []leetcode.RunCase{
+				{Index: 0, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+			},
+		},
 		SubmitResult: &leetcode.SubmitResult{State: "SUCCESS", StatusCode: 10, SubmissionID: "fake-1"},
 	}
 }

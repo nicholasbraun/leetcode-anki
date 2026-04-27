@@ -55,7 +55,7 @@ func TestHook_ShadowsSeededData(t *testing.T) {
 func TestRun_DefaultsToSeededRunResult(t *testing.T) {
 	canned := &leetcode.RunResult{StatusCode: 10}
 	f := &Fake{RunResult: canned}
-	got, err := f.InterpretSolution(context.Background(), "two-sum", "python3", "1", "code", "input")
+	got, err := f.InterpretSolution(context.Background(), "two-sum", "python3", "1", "code", "input", "")
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -73,7 +73,7 @@ var _ interface {
 	ProblemDetail(context.Context, string) (*leetcode.ProblemDetail, error)
 	SubmissionList(context.Context, string, string, int) ([]leetcode.Submission, string, error)
 	UserProgress(context.Context, int, int) ([]leetcode.ProgressQuestion, int, error)
-	InterpretSolution(context.Context, string, string, string, string, string) (*leetcode.RunResult, error)
+	InterpretSolution(context.Context, string, string, string, string, string, string) (*leetcode.RunResult, error)
 	Submit(context.Context, string, string, string, string) (*leetcode.SubmitResult, error)
 	UpdateSubmissionNote(context.Context, string, string, []int, string) error
 } = (*Fake)(nil)
