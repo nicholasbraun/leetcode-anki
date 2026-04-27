@@ -92,9 +92,7 @@ func (c *Client) doGraphQL(ctx context.Context, opName, query string, vars map[s
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
-	if debugLog {
-		appendDebugLog(opName, raw)
-	}
+	appendDebugLog(opName, raw)
 	if resp.StatusCode != http.StatusOK {
 		return nil, statusError(resp.StatusCode, raw)
 	}
@@ -157,22 +155,43 @@ func (c *Client) doREST(ctx context.Context, method, url string, in any, out any
 // echoes of CSRF tokens — none of which belong in a TUI banner. Callers that
 // need the body for diagnostics should enable debug logging instead.
 func statusError(code int, body []byte) error {
-	if debugLog {
+	if debugLogEnabled() {
 		return fmt.Errorf("status %d: %s", code, string(body))
 	}
 	return fmt.Errorf("status %d", code)
 }
 
-// debugLog enables raw GraphQL response logging when the LEETCODE_DEBUG env
-// var is non-empty. When on, each response body is appended to
+// debugLogEnabled reports whether the LEETCODE_DEBUG env var is set.
+// When enabled, raw GraphQL response bodies, dropped-row events (bad
+// timestamps, etc.), and HTTP non-2xx response bodies are appended to
 // `<UserCacheDir>/leetcode-anki/debug.log` (mode 0600), and statusError
-// includes the response body in returned errors. Used to diagnose schema
-// drift in LeetCode's GraphQL responses.
-var debugLog = os.Getenv("LEETCODE_DEBUG") != ""
+// includes the response body in returned errors. Used to diagnose
+// LeetCode schema drift. Read at call time (not init) so tests can flip
+// the flag with t.Setenv.
+//
+// SECURITY: debug.log contains live API responses. Those responses
+// include Problem descriptions, Solution code submitted by the user, AC
+// rates, and request-correlation IDs. Treat the file as user data — do
+// not commit it, paste it into bug reports without scrubbing, or enable
+// LEETCODE_DEBUG on a shared workstation.
+func debugLogEnabled() bool {
+	return os.Getenv("LEETCODE_DEBUG") != ""
+}
 
-// appendDebugLog writes one line `<opName>\t<raw>` to the debug log file.
-// Failures are swallowed: diagnostics must never break the request path.
+// debugLogMaxBytes caps debug.log so an unattended LEETCODE_DEBUG run
+// can't fill the user's cache partition. Once the file passes the cap,
+// further writes are dropped (no rotation — the user is expected to
+// `rm` the file to start a new collection window).
+const debugLogMaxBytes = 10 * 1024 * 1024
+
+// appendDebugLog writes one line `<opName>\t<raw>` to the debug log
+// file. No-op when LEETCODE_DEBUG is unset, when the file is at or
+// past debugLogMaxBytes, or on any I/O failure: diagnostics must never
+// break the request path.
 func appendDebugLog(opName string, raw []byte) {
+	if !debugLogEnabled() {
+		return
+	}
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return
@@ -181,7 +200,11 @@ func appendDebugLog(opName string, raw []byte) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(dir, "debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	path := filepath.Join(dir, "debug.log")
+	if info, err := os.Stat(path); err == nil && info.Size() >= debugLogMaxBytes {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
