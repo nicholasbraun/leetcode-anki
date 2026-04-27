@@ -153,3 +153,75 @@ func TestDelete_AbsentFileIsNoError(t *testing.T) {
 		t.Errorf("Delete on missing file should be a no-op; got %v", err)
 	}
 }
+
+func TestSaveToPath_AndLoadFromPath_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "creds.json")
+	want := &Credentials{Session: "sess", CSRF: "csrf"}
+
+	if err := SaveToPath(want, path); err != nil {
+		t.Fatalf("SaveToPath: %v", err)
+	}
+	got, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("LoadFromPath: %v", err)
+	}
+	if got.Session != want.Session || got.CSRF != want.CSRF {
+		t.Errorf("round-trip mismatch: got %+v, want %+v", got, want)
+	}
+}
+
+func TestSaveToPath_FileMode0600(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "creds.json")
+	if err := SaveToPath(&Credentials{Session: "s", CSRF: "c"}, path); err != nil {
+		t.Fatalf("SaveToPath: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestLoadFromPath_RefusesWidePermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "creds.json")
+	if err := SaveToPath(&Credentials{Session: "s", CSRF: "c"}, path); err != nil {
+		t.Fatalf("SaveToPath: %v", err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	if _, err := LoadFromPath(path); err == nil {
+		t.Error("LoadFromPath: expected refusal of 0644 file; got nil")
+	}
+}
+
+func TestLoadFromPath_MissingFileIsError(t *testing.T) {
+	if _, err := LoadFromPath(filepath.Join(t.TempDir(), "nope.json")); err == nil {
+		t.Error("LoadFromPath: expected error for missing file; got nil")
+	}
+}
+
+// TestCredsPath must point to a sibling of the prod creds file, not a
+// nested directory — the project keeps a single config dir per app.
+func TestTestCredsPath_SiblingOfProdCreds(t *testing.T) {
+	redirectStores(t)
+	prod, err := cachePath()
+	if err != nil {
+		t.Fatalf("cachePath: %v", err)
+	}
+	test, err := TestCredsPath()
+	if err != nil {
+		t.Fatalf("TestCredsPath: %v", err)
+	}
+	if filepath.Dir(prod) != filepath.Dir(test) {
+		t.Errorf("test creds dir %q != prod creds dir %q", filepath.Dir(test), filepath.Dir(prod))
+	}
+	if filepath.Base(test) == filepath.Base(prod) {
+		t.Errorf("test creds path collides with prod creds path: %q", test)
+	}
+}
