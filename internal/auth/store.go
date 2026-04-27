@@ -27,27 +27,12 @@ func cachePath() (string, error) {
 }
 
 // Load returns the cached credentials, or an error if none are available.
-//
-// Side effect: if the canonical creds file is missing but a legacy
-// `.leetcode-creds.json` exists in the current working directory, Load
-// migrates it (writing the canonical file) and returns the migrated value.
-// Callers should treat a non-nil error as "no credentials"; they don't need
-// to distinguish missing-file from migrate-failed.
 func Load() (*Credentials, error) {
 	p, err := cachePath()
 	if err != nil {
 		return nil, err
 	}
-	c, err := LoadFromPath(p)
-	if err == nil {
-		return c, nil
-	}
-	if os.IsNotExist(err) {
-		if migrated, mErr := migrateLegacy(); mErr == nil && migrated != nil {
-			return migrated, nil
-		}
-	}
-	return nil, err
+	return LoadFromPath(p)
 }
 
 // LoadFromPath reads credentials from an arbitrary file path. It refuses
@@ -70,28 +55,6 @@ func LoadFromPath(path string) (*Credentials, error) {
 	}
 	var c Credentials
 	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, err
-	}
-	return &c, nil
-}
-
-// migrateLegacy attempts a one-time copy from the old CWD-relative
-// `.leetcode-creds.json` to the new UserConfigDir location. Returns nil, nil
-// if the legacy file isn't present.
-func migrateLegacy() (*Credentials, error) {
-	const legacy = ".leetcode-creds.json"
-	data, err := os.ReadFile(legacy)
-	if err != nil {
-		return nil, err
-	}
-	var c Credentials
-	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, err
-	}
-	if c.Session == "" || c.CSRF == "" {
-		return nil, nil
-	}
-	if err := Save(&c); err != nil {
 		return nil, err
 	}
 	return &c, nil

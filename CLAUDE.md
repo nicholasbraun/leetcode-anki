@@ -7,7 +7,7 @@ The canonical domain vocabulary lives in [CONTEXT.md](CONTEXT.md). Read it befor
 ## Layout
 
 - `cmd/leetcode-anki/main.go` — single binary entry. Flags: `--logout` (forces re-auth via chromedp).
-- `internal/auth/` — chromedp browser login + creds cache at `os.UserConfigDir()/leetcode-anki/creds.json` (mode `0600`). One-time migration from legacy `.leetcode-creds.json` lives in `store.go`.
+- `internal/auth/` — chromedp browser login + creds cache at `os.UserConfigDir()/leetcode-anki/creds.json` (mode `0600`).
 - `internal/leetcode/` — GraphQL + REST client. **All headers (`Cookie`, `x-csrftoken`, `Referer`) centralized in `client.setHeaders`** — never set them anywhere else. Run/submit poll `/submissions/detail/{id}/check/` until `state == "SUCCESS"`.
 - `internal/render/html.go` — HTML → markdown for problem descriptions.
 - `internal/editor/` — solution scaffolding under `os.UserCacheDir()/leetcode-anki/<slug>/solution.<ext>` + `tea.ExecProcess` editor invocation. Existing files are never overwritten so users can resume.
