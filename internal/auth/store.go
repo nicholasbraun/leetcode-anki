@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -32,18 +33,31 @@ func cachePath() (string, error) {
 // migrates it (writing the canonical file) and returns the migrated value.
 // Callers should treat a non-nil error as "no credentials"; they don't need
 // to distinguish missing-file from migrate-failed.
+//
+// Load also refuses to read the file if its mode is wider than 0600. We
+// always Save with 0600, so a wider mode means a backup restore, a chmod
+// typo, or another process has loosened the file — at which point another
+// local user could be reading the live LEETCODE_SESSION cookie. Forcing
+// re-auth is safer than silently consuming the suspect credential.
 func Load() (*Credentials, error) {
 	p, err := cachePath()
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(p)
+	info, err := os.Stat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if c, mErr := migrateLegacy(); mErr == nil && c != nil {
 				return c, nil
 			}
 		}
+		return nil, err
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		return nil, fmt.Errorf("creds file %s has mode %o; expected 0600 — chmod 600 it or delete to re-auth", p, perm)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
 		return nil, err
 	}
 	var c Credentials

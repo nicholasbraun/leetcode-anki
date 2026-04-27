@@ -112,6 +112,41 @@ func TestMigrateLegacy_IgnoresEmptyCreds(t *testing.T) {
 	}
 }
 
+// A creds file with permissions wider than 0600 means another local user
+// (or a backup-restore that didn't preserve mode) can read the live
+// LEETCODE_SESSION cookie. Refuse to consume the file rather than silently
+// using a credential the user thinks is private.
+func TestLoad_RefusesWideCredsPermissions(t *testing.T) {
+	redirectStores(t)
+	if err := Save(&Credentials{Session: "s", CSRF: "c"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	p, _ := cachePath()
+	if err := os.Chmod(p, 0o644); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+
+	if _, err := Load(); err == nil {
+		t.Error("expected Load to refuse a 0644 creds file; got nil")
+	}
+}
+
+func TestLoad_AcceptsTightCredsPermissions(t *testing.T) {
+	redirectStores(t)
+	if err := Save(&Credentials{Session: "s", CSRF: "c"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	p, _ := cachePath()
+	// 0400 (read-only owner) is tighter than 0600 — must still be accepted.
+	if err := os.Chmod(p, 0o400); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+
+	if _, err := Load(); err != nil {
+		t.Errorf("Load with 0400 creds file: %v", err)
+	}
+}
+
 func TestDelete_AbsentFileIsNoError(t *testing.T) {
 	redirectStores(t)
 	if err := Delete(); err != nil {
