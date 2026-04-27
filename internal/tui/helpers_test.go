@@ -156,6 +156,12 @@ type fakeReviews struct {
 
 	dueResp []sr.DueProblem
 	err     error
+
+	// previewResp is what Preview returns. previewErr only fires when set;
+	// otherwise Preview returns previewResp with err == nil so the rating
+	// modal can stage canned dates without piggybacking on the shared `err`.
+	previewResp [4]time.Time
+	previewErr  error
 }
 
 type recordCall struct {
@@ -186,4 +192,10 @@ func (f *fakeReviews) Due(_ context.Context, _ time.Time) ([]sr.DueProblem, erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.dueResp, f.err
+}
+
+func (f *fakeReviews) Preview(_ context.Context, _ string, _ time.Time) ([4]time.Time, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.previewResp, f.previewErr
 }

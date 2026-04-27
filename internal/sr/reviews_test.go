@@ -2,12 +2,15 @@ package sr
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"leetcode-anki/internal/leetcode"
 )
+
+var errBoom = errors.New("boom")
 
 type fakeClient struct {
 	listResp     []leetcode.Submission
@@ -259,5 +262,76 @@ func TestDue_OnlyTrackedAndPastNextDue(t *testing.T) {
 	}
 	if !(Status{Tracked: true, NextDue: at}).Due(at.Add(time.Hour)) {
 		t.Error("past NextDue should be Due")
+	}
+}
+
+// On a brand-new Problem the first three ratings (Again/Hard/Good) all
+// graduate at +1 day; Easy jumps ahead via the graduating bonus. So the
+// rating modal shows three identical "due tomorrow" lines and a single
+// longer line for Easy.
+func TestPreview_FirstReview_EasyGraduatesFaster(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fc := &fakeClient{}
+	r := newTestReviews(t, fc)
+
+	got, err := r.Preview(context.Background(), "two-sum", at)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	tomorrow := at.AddDate(0, 0, 1)
+	for i := 0; i < 3; i++ {
+		if !got[i].Equal(tomorrow) {
+			t.Errorf("rating %d: NextDue = %v, want %v", i+1, got[i], tomorrow)
+		}
+	}
+	if !got[3].After(got[2]) {
+		t.Errorf("Easy (%v) should graduate later than Good (%v)", got[3], got[2])
+	}
+}
+
+// After several reviews, SM-2's compounding diverges the four ratings:
+// Again resets, Hard ≤ Good ≤ Easy. Strict ordering keeps the test
+// resilient to ease-factor tweaks.
+func TestPreview_NthReview_StrictlyOrdered(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fc := &fakeClient{}
+	r := newTestReviews(t, fc)
+	r.cache.Slugs["two-sum"] = slugEntry{Submissions: []cachedSubmission{
+		{ID: "1", OccurredAt: at.AddDate(0, 0, -10), Accepted: true, Notes: "[anki:3]"},
+		{ID: "2", OccurredAt: at.AddDate(0, 0, -7), Accepted: true, Notes: "[anki:3]"},
+		{ID: "3", OccurredAt: at.AddDate(0, 0, -1), Accepted: true, Notes: "[anki:3]"},
+	}}
+
+	got, err := r.Preview(context.Background(), "two-sum", at)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	if !got[0].Before(got[1]) {
+		t.Errorf("Again (%v) should be earlier than Hard (%v)", got[0], got[1])
+	}
+	if !got[1].Before(got[2]) {
+		t.Errorf("Hard (%v) should be earlier than Good (%v)", got[1], got[2])
+	}
+	if !got[2].Before(got[3]) {
+		t.Errorf("Good (%v) should be earlier than Easy (%v)", got[2], got[3])
+	}
+}
+
+// When the underlying SubmissionList call fails (e.g. cold cache + network
+// error), Preview returns the zero-array and the error so the TUI can
+// degrade to "preview unavailable" rather than rendering bogus dates.
+func TestPreview_StatusErrorPropagates(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fc := &fakeClient{listErr: errBoom}
+	r := newTestReviews(t, fc)
+
+	got, err := r.Preview(context.Background(), "two-sum", at)
+	if err == nil {
+		t.Fatal("expected error to propagate")
+	}
+	for i, p := range got {
+		if !p.IsZero() {
+			t.Errorf("rating %d: expected zero time on error, got %v", i+1, p)
+		}
 	}
 }

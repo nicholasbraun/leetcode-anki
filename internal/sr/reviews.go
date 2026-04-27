@@ -34,6 +34,12 @@ type Reviews interface {
 	// Review Mode entry point — the TUI calls it when the user presses
 	// the Review key on the lists screen.
 	Due(ctx context.Context, now time.Time) ([]DueProblem, error)
+
+	// Preview forecasts the next-due time for each candidate rating
+	// (index 0..3 = ratings 1..4 / Again/Hard/Good/Easy) if the user
+	// were to grade `slug` at `now`. Powers the rating modal's "due in
+	// X days" hint. Returns the zero array on error.
+	Preview(ctx context.Context, slug string, now time.Time) ([4]time.Time, error)
 }
 
 // DueProblem is one entry in the Review Mode list. Carries enough display
@@ -176,6 +182,24 @@ func (r *reviews) Due(ctx context.Context, now time.Time) ([]DueProblem, error) 
 			NextDue:    st.NextDue,
 			Reviews:    st.Reviews,
 		})
+	}
+	return out, nil
+}
+
+// Preview runs the scheduler against the cached history plus a synthetic
+// review at `now` for each candidate rating. The cache is warmed via
+// Status, so the first call for a slug pays the SubmissionList round-trip
+// just like Status does; subsequent calls are pure CPU.
+func (r *reviews) Preview(ctx context.Context, slug string, now time.Time) ([4]time.Time, error) {
+	var out [4]time.Time
+	if _, err := r.Status(ctx, slug, now); err != nil {
+		return out, err
+	}
+	base := buildReviews(r.cache.Slugs[slug].Submissions)
+	for i, rating := range [4]int{1, 2, 3, 4} {
+		synthetic := append(append([]review{}, base...),
+			review{at: now, quality: ratingToQuality(rating, true)})
+		out[i] = r.sched.schedule(synthetic)
 	}
 	return out, nil
 }
