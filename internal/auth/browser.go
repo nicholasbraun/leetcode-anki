@@ -11,7 +11,14 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-func extractCookiesViaBrowser(ctx context.Context) (*Credentials, error) {
+// BrowserLogin opens an interactive Chrome window pointed at the LeetCode
+// login page and waits for the user to complete login. On detection of a
+// successful redirect off /accounts/login/, it extracts the
+// LEETCODE_SESSION + csrftoken cookies and returns them. The caller is
+// responsible for persisting the result via Save or SaveToPath.
+//
+// Times out after 5 minutes if the user never completes the login.
+func BrowserLogin(ctx context.Context) (*Credentials, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", false),
 		chromedp.Flag("disable-gpu", false),
@@ -86,7 +93,7 @@ func GetCredentials(ctx context.Context) (*Credentials, error) {
 		return c, nil
 	}
 
-	c, err := extractCookiesViaBrowser(ctx)
+	c, err := BrowserLogin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +108,7 @@ func GetCredentials(ctx context.Context) (*Credentials, error) {
 // ForceLogin discards any cached credentials and re-runs the browser flow.
 func ForceLogin(ctx context.Context) (*Credentials, error) {
 	_ = Delete()
-	c, err := extractCookiesViaBrowser(ctx)
+	c, err := BrowserLogin(ctx)
 	if err != nil {
 		return nil, err
 	}
