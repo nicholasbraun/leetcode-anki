@@ -13,21 +13,21 @@ import (
 )
 
 type fakeClient struct {
-	details   map[string]*leetcode.ProblemDetail
-	questions map[string][]leetcode.Question
-	calls     []string
+	details  map[string]*leetcode.ProblemDetail
+	problems map[string][]Problem
+	calls    []string
 }
 
 func (f *fakeClient) MyFavoriteLists(ctx context.Context) ([]leetcode.FavoriteList, error) {
 	return nil, nil
 }
 func (f *fakeClient) FavoriteQuestionList(ctx context.Context, slug string, skip, limit int) (*leetcode.FavoriteQuestionListResult, error) {
-	if qs, ok := f.questions[slug]; ok {
+	if qs, ok := f.problems[slug]; ok {
 		return &leetcode.FavoriteQuestionListResult{Questions: qs}, nil
 	}
 	return &leetcode.FavoriteQuestionListResult{}, nil
 }
-func (f *fakeClient) Question(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error) {
+func (f *fakeClient) ProblemDetail(ctx context.Context, titleSlug string) (*leetcode.ProblemDetail, error) {
 	f.calls = append(f.calls, titleSlug)
 	if d, ok := f.details[titleSlug]; ok {
 		return d, nil
@@ -41,13 +41,13 @@ func (f *fakeClient) Submit(ctx context.Context, slug, lang, qid, code string) (
 	return nil, nil
 }
 
-func loadFakeProblems(t *testing.T, m *Model, qs []leetcode.Question) {
+func loadFakeProblems(t *testing.T, m *Model, qs []Problem) {
 	t.Helper()
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "test", Name: "test"}
 	// The returned cmd is the initial cursor-sync tea.Tick; we drive ticks
 	// manually in these tests so we drop it instead of executing it.
-	_, _ = m.Update(problemsLoadedMsg{questions: qs})
+	_, _ = m.Update(problemsLoadedMsg{problems: qs})
 }
 
 func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
@@ -56,7 +56,7 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 		"c": sampleDetail("c"), "d": sampleDetail("d"),
 	}}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 		{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
 		{QuestionFrontendID: "3", Title: "C", TitleSlug: "c"},
@@ -86,14 +86,14 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 		t.Fatalf("expected previewLoadedMsg, got %T", msg)
 	}
 	if len(fc.calls) != 1 || fc.calls[0] != "d" {
-		t.Errorf("Question calls = %v, want [d]", fc.calls)
+		t.Errorf("ProblemDetail calls = %v, want [d]", fc.calls)
 	}
 }
 
 func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	fc := &fakeClient{details: map[string]*leetcode.ProblemDetail{"a": sampleDetail("a")}}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
 
@@ -118,7 +118,7 @@ func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 		t.Fatalf("expected cache-served problemLoadedMsg, got %T", msg)
 	}
 	if len(fc.calls) != 0 {
-		t.Errorf("expected no Question calls on cache hit, got %v", fc.calls)
+		t.Errorf("expected no ProblemDetail calls on cache hit, got %v", fc.calls)
 	}
 }
 
@@ -160,7 +160,7 @@ func TestRowGlyph(t *testing.T) {
 func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 	fc := &fakeClient{}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
 	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
@@ -183,7 +183,7 @@ func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 	fc := &fakeClient{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
 	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
@@ -212,7 +212,7 @@ func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 	fc := &fakeClient{}
 	fr := newFakeReviews()
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
 	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}
@@ -233,7 +233,7 @@ func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	fc := &fakeClient{}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "Premium", TitleSlug: "p", PaidOnly: true},
 	})
 
@@ -244,7 +244,7 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 		t.Errorf("expected premium tick to be discarded, got cmd")
 	}
 	if len(fc.calls) != 0 {
-		t.Errorf("expected zero Question calls for premium, got %v", fc.calls)
+		t.Errorf("expected zero ProblemDetail calls for premium, got %v", fc.calls)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 // because titleMax and the gap formula targeted different right edges.
 func TestProblemRowDifficultyRightAligned(t *testing.T) {
 	const width = 50
-	qs := []leetcode.Question{
+	qs := []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a", Difficulty: "Easy"},
 		{QuestionFrontendID: "424", Title: "Longest Repeating Character Replacement", TitleSlug: "lrcr", Difficulty: "Medium"},
 	}

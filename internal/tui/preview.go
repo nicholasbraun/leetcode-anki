@@ -37,7 +37,7 @@ type previewState struct {
 // changed, when the slug is already cached, or when the problem is premium-
 // locked (we can't fetch its content anyway). acRate is the AC percentage
 // for the slug, threaded through because ProblemDetail itself doesn't
-// carry it — it lives only on the Question summary.
+// carry it — it lives only on the Problem-list row.
 func (s *previewState) cursorMoved(slug, title string, paidOnly bool, acRate float64) bool {
 	if slug == s.highlighted {
 		return false
@@ -219,7 +219,7 @@ func loadPreviewCmd(parent context.Context, c LeetcodeClient, slug string) tea.C
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, previewFetchTimeout)
 		defer cancel()
-		p, err := c.Question(ctx, slug)
+		p, err := c.ProblemDetail(ctx, slug)
 		return previewLoadedMsg{slug: slug, detail: p, err: err}
 	}
 }

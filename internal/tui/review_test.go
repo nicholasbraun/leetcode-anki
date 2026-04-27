@@ -99,7 +99,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
-	m.problemsAll = []leetcode.Question{
+	m.problemsAll = []Problem{
 		{TitleSlug: "a", Title: "A", QuestionFrontendID: "1", Status: &ac},
 		{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 		{TitleSlug: "c", Title: "C", QuestionFrontendID: "3", Status: &ac},
@@ -107,7 +107,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	m.dueSlugs = map[string]bool{"a": true}
 	m.problemsReady = true
 	m.screen = screenProblems
-	m.problems = newProblemsList(140, 30, []leetcode.Question{m.problemsAll[0]}, "X", nil)
+	m.problems = newProblemsList(140, 30, []Problem{m.problemsAll[0]}, "X", nil)
 
 	// Review → Explore: full list, no spinner, no re-fetch.
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
@@ -140,7 +140,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 // silently fail to filter.
 func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{questions: map[string][]leetcode.Question{
+	fc := &fakeClient{problems: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
@@ -148,7 +148,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = false
-	m.problemsAll = []leetcode.Question{{TitleSlug: "a", Status: &ac}}
+	m.problemsAll = []Problem{{TitleSlug: "a", Status: &ac}}
 	m.dueSlugs = nil
 	m.problemsReady = true
 	m.screen = screenProblems
@@ -167,7 +167,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 }
 
 // In Review Mode, problemsLoadedMsg with a dueSlugs set must render only
-// the questions that are present in dueSlugs.
+// the Problems that are present in dueSlugs.
 func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
 	ac := "AC"
 	fc := &fakeClient{}
@@ -178,7 +178,7 @@ func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
 	m.reviewMode = true
 
 	_, _ = m.Update(problemsLoadedMsg{
-		questions: []leetcode.Question{
+		problems: []Problem{
 			{TitleSlug: "a", Title: "A", QuestionFrontendID: "1", Status: &ac},
 			{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 			{TitleSlug: "c", Title: "C", QuestionFrontendID: "3", Status: &ac},
@@ -210,7 +210,7 @@ func TestProblemsLoaded_NonReview_NoFilter(t *testing.T) {
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 
 	_, _ = m.Update(problemsLoadedMsg{
-		questions: []leetcode.Question{
+		problems: []Problem{
 			{TitleSlug: "a", Title: "A", QuestionFrontendID: "1"},
 			{TitleSlug: "b", Title: "B", QuestionFrontendID: "2"},
 		},
@@ -229,12 +229,12 @@ func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
 	tried := "TRIED"
 	now := time.Now()
 
-	fc := &fakeClient{questions: map[string][]leetcode.Question{
+	fc := &fakeClient{problems: map[string][]Problem{
 		"x": {
-			{TitleSlug: "a", Status: &ac},     // AC + due
-			{TitleSlug: "b", Status: &tried},  // not AC — skip
-			{TitleSlug: "c", Status: &ac},     // AC but not due
-			{TitleSlug: "d", Status: nil},     // unsolved
+			{TitleSlug: "a", Status: &ac},    // AC + due
+			{TitleSlug: "b", Status: &tried}, // not AC — skip
+			{TitleSlug: "c", Status: &ac},    // AC but not due
+			{TitleSlug: "d", Status: nil},    // unsolved
 		},
 	}}
 	fr := newFakeReviews()
@@ -249,8 +249,8 @@ func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected problemsLoadedMsg, got %T", msg)
 	}
-	if len(loaded.questions) != 4 {
-		t.Errorf("expected all 4 questions to load (filter happens at render), got %d", len(loaded.questions))
+	if len(loaded.problems) != 4 {
+		t.Errorf("expected all 4 problems to load (filter happens at render), got %d", len(loaded.problems))
 	}
 	if !loaded.dueSlugs["a"] {
 		t.Error("a should be in dueSlugs (AC + due)")
@@ -267,7 +267,7 @@ func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
 // calls at all, so Explore-Mode users don't pay for the SR fan-out.
 func TestLoadProblemsCmd_NoDueSlugs_WhenExploreMode(t *testing.T) {
 	ac := "AC"
-	fc := &fakeClient{questions: map[string][]leetcode.Question{
+	fc := &fakeClient{problems: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
@@ -294,7 +294,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
-	m.problemsAll = []leetcode.Question{
+	m.problemsAll = []Problem{
 		{TitleSlug: "a", Title: "A", QuestionFrontendID: "1", Status: &ac},
 		{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 	}

@@ -83,7 +83,7 @@ func TestEditorDoneMsg_MarksSolution(t *testing.T) {
 	m := onProblemScreen("two-sum", cache, ed, &fakeClient{})
 
 	// Seed the problems list so the row-glyph sync path runs.
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "Two Sum", TitleSlug: "two-sum"},
 	})
 	// loadFakeProblems flips m.screen to screenProblems; restore the detail screen.

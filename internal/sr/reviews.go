@@ -43,7 +43,7 @@ type Reviews interface {
 }
 
 // DueProblem is one entry in the Review Mode list. Carries enough display
-// metadata for the TUI to render rows without re-fetching question detail.
+// metadata for the TUI to render rows without re-fetching Problem detail.
 type DueProblem struct {
 	TitleSlug  string
 	Title      string

@@ -8,12 +8,10 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
-	"leetcode-anki/internal/leetcode"
 )
 
 type problemItem struct {
-	q           leetcode.Question
+	q           Problem
 	hasSolution bool
 }
 
@@ -151,7 +149,7 @@ func rebuildProblemsList(m *Model) {
 	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
 }
 
-func newProblemsList(width, height int, qs []leetcode.Question, listName string, solutions map[string]bool) list.Model {
+func newProblemsList(width, height int, qs []Problem, listName string, solutions map[string]bool) list.Model {
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
 		items[i] = problemItem{q: q, hasSolution: solutions[q.TitleSlug]}

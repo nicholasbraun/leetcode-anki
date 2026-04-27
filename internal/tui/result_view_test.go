@@ -23,7 +23,7 @@ func modalSetup(t *testing.T) (*Model, *fakeReviews, *fakeClient) {
 	fr := newFakeReviews()
 	fr.previewResp = [4]time.Time{tomorrow, tomorrow, in6, in6.AddDate(0, 0, 9)}
 	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
-	loadFakeProblems(t, m, []leetcode.Question{
+	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 		{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
 		{QuestionFrontendID: "3", Title: "C", TitleSlug: "c"},
@@ -144,7 +144,7 @@ func TestRatingDigitRecordsAndAdvances(t *testing.T) {
 			m, fr, _ := modalSetup(t)
 			m.reviewMode = true
 			m.dueSlugs = map[string]bool{"a": true, "b": true}
-			m.problemsAll = []leetcode.Question{
+			m.problemsAll = []Problem{
 				{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 				{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
 			}
@@ -264,7 +264,7 @@ func TestReviewModeNoMoreDueFallsBackToList(t *testing.T) {
 	m, fr, _ := modalSetup(t)
 	m.reviewMode = true
 	m.dueSlugs = map[string]bool{"a": true} // only the just-rated slug
-	m.problemsAll = []leetcode.Question{
+	m.problemsAll = []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	}
 
@@ -298,7 +298,7 @@ func TestRejectedShowsStandardResultScreen(t *testing.T) {
 			fc := &fakeClient{}
 			fr := newFakeReviews()
 			m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
-			loadFakeProblems(t, m, []leetcode.Question{
+			loadFakeProblems(t, m, []Problem{
 				{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 			})
 			m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "a"}

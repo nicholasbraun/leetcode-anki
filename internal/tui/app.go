@@ -65,7 +65,7 @@ type Model struct {
 	// problemsAll is the unfiltered slice loaded for currentList. The
 	// problems list view derives its items from this, optionally filtered
 	// through dueSlugs, so 'v' can flip Review/Explore without re-fetching.
-	problemsAll []leetcode.Question
+	problemsAll []Problem
 
 	// dueSlugs is the set of slugs in problemsAll currently due for review.
 	// Populated by loadProblemsCmd when reviewMode is on at load time;
@@ -183,7 +183,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.solutionSlugs == nil {
 			m.solutionSlugs = map[string]bool{}
 		}
-		m.problemsAll = msg.questions
+		m.problemsAll = msg.problems
 		m.dueSlugs = msg.dueSlugs
 		visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
 		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
@@ -355,11 +355,11 @@ func keyMatch(m tea.KeyMsg, b key.Binding) bool {
 // dueSlugs. A nil dueSlugs in Review Mode means the load was made before
 // SR data was available — fall back to the full list rather than render
 // an empty pane.
-func visibleProblems(all []leetcode.Question, reviewMode bool, dueSlugs map[string]bool) []leetcode.Question {
+func visibleProblems(all []Problem, reviewMode bool, dueSlugs map[string]bool) []Problem {
 	if !reviewMode || dueSlugs == nil {
 		return all
 	}
-	out := make([]leetcode.Question, 0, len(dueSlugs))
+	out := make([]Problem, 0, len(dueSlugs))
 	for _, q := range all {
 		if dueSlugs[q.TitleSlug] {
 			out = append(out, q)
@@ -432,7 +432,7 @@ type listsLoadedMsg struct {
 }
 
 type problemsLoadedMsg struct {
-	questions []leetcode.Question
+	problems  []Problem
 	solutions map[string]bool
 	// dueSlugs is the set of currently-due slugs computed by loadProblemsCmd
 	// when reviewMode was on at load time. Nil when the load happened in
@@ -505,7 +505,7 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCac
 				}
 			}
 		}
-		return problemsLoadedMsg{questions: res.Questions, solutions: solutions, dueSlugs: dueSlugs}
+		return problemsLoadedMsg{problems: res.Questions, solutions: solutions, dueSlugs: dueSlugs}
 	}
 }
 
@@ -521,7 +521,7 @@ func loadProblemCmd(parent context.Context, c LeetcodeClient, titleSlug string) 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, defaultTimeout)
 		defer cancel()
-		p, err := c.Question(ctx, titleSlug)
+		p, err := c.ProblemDetail(ctx, titleSlug)
 		if err != nil {
 			return errMsg{err}
 		}

@@ -120,8 +120,8 @@ query questionData($titleSlug: String!) {
 }
 `
 
-// Question fetches the full content (description, code snippets, etc.) of a single problem.
-func (c *Client) Question(ctx context.Context, titleSlug string) (*ProblemDetail, error) {
+// ProblemDetail fetches the full content (description, code snippets, etc.) of a single Problem.
+func (c *Client) ProblemDetail(ctx context.Context, titleSlug string) (*ProblemDetail, error) {
 	vars := map[string]any{"titleSlug": titleSlug}
 	referer := fmt.Sprintf("%s/problems/%s/", BaseURL, titleSlug)
 
