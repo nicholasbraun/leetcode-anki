@@ -63,6 +63,33 @@ func TestPollCheck_ReturnsOnSuccess(t *testing.T) {
 	}
 }
 
+// First poll already terminal: pollCheck must skip the initial 700ms
+// sleep and return on the first response. Test cap is generous so a
+// regression where the loop sleeps before checking would visibly stall.
+func TestPollCheck_ImmediateSuccessSkipsBackoff(t *testing.T) {
+	d := &scriptedDoer{bodies: []string{
+		`{"state":"SUCCESS","status_msg":"Accepted"}`,
+	}}
+	c := newTestClient(d)
+
+	start := time.Now()
+	raw, err := c.pollCheck(context.Background(), "abc")
+	if err != nil {
+		t.Fatalf("pollCheck: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed >= 500*time.Millisecond {
+		t.Errorf("first-call-terminal path slept (took %v); should return immediately", elapsed)
+	}
+	var probe struct{ State string }
+	_ = json.Unmarshal(raw, &probe)
+	if probe.State != "SUCCESS" {
+		t.Errorf("got state %q, want SUCCESS", probe.State)
+	}
+	if got := atomic.LoadInt32(&d.calls); got != 1 {
+		t.Errorf("expected 1 poll, got %d", got)
+	}
+}
+
 // LeetCode does not document the full state alphabet; pollCheck treats any
 // non-pending value as terminal so the TUI doesn't spin until the outer
 // timeout when LeetCode introduces a new state.

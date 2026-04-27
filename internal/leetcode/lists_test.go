@@ -90,6 +90,28 @@ func TestMyFavoriteLists_FallsBackWhenFirstFails(t *testing.T) {
 	}
 }
 
+// Symmetric of TestMyFavoriteLists_FallsBackWhenFirstFails: first query
+// succeeds with results, second query 500s. The user should still see
+// the partial set rather than an error — losing one source mid-session
+// shouldn't empty the lists screen.
+func TestMyFavoriteLists_ReturnsFirstResultsWhenSecondFails(t *testing.T) {
+	d := &routedDoer{byOp: map[string]string{
+		"myCreatedFavoriteList": `{"data":{"myCreatedFavoriteList":{"favorites":[
+			{"slug":"created-1","name":"My Sheet","questionNumber":42}
+		]}}}`,
+		// allFavorites omitted from byOp → routedDoer returns 500.
+	}}
+	c := newClientWithDoer(&auth.Credentials{Session: "s", CSRF: "c"}, d)
+
+	got, err := c.MyFavoriteLists(context.Background())
+	if err != nil {
+		t.Fatalf("MyFavoriteLists: %v (expected nil — first source succeeded)", err)
+	}
+	if len(got) != 1 || got[0].Slug != "created-1" {
+		t.Errorf("expected first-source results to survive; got %+v", got)
+	}
+}
+
 func TestMyFavoriteLists_ErrorsWhenBothFail(t *testing.T) {
 	d := &routedDoer{byOp: map[string]string{}}
 	c := newClientWithDoer(&auth.Credentials{Session: "s", CSRF: "c"}, d)
