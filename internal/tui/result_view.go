@@ -166,11 +166,11 @@ func problemTitle(m *Model) string {
 	return m.currentProblem.Title
 }
 
-// runHeaderAndBody returns the colored header and the body for a run result.
-// nil yields a "no result" header so the screen still draws.
+// runHeaderAndBody returns the colored header and the body for a Run Verdict.
+// nil yields a "no verdict" header so the screen still draws.
 func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
 	if r == nil {
-		return errorStyle.Render("no result"), ""
+		return errorStyle.Render("no verdict"), ""
 	}
 	switch {
 	case r.CompileError != "":
@@ -186,10 +186,10 @@ func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
 	}
 }
 
-// submitHeaderAndBody mirrors runHeaderAndBody for submit verdicts.
+// submitHeaderAndBody mirrors runHeaderAndBody for Submit Verdicts.
 func submitHeaderAndBody(r *leetcode.SubmitResult) (string, string) {
 	if r == nil {
-		return errorStyle.Render("no result"), ""
+		return errorStyle.Render("no verdict"), ""
 	}
 	switch {
 	case r.CompileError != "":

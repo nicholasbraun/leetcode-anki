@@ -50,7 +50,7 @@ func TestRenderRunResult(t *testing.T) {
 		{
 			name:        "nil",
 			in:          nil,
-			wantContain: []string{"no result"},
+			wantContain: []string{"no verdict"},
 		},
 		{
 			name: "accepted",
@@ -348,7 +348,7 @@ func TestRenderSubmitResult(t *testing.T) {
 		{
 			name:        "nil",
 			in:          nil,
-			wantContain: []string{"no result"},
+			wantContain: []string{"no verdict"},
 		},
 		{
 			name: "accepted",
