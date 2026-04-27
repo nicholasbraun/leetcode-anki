@@ -81,3 +81,14 @@ go test -tags integration ./internal/leetcode/...
 Each run submits the fixture's known passing solution to LeetCode's judge, which adds an entry to the test account's submission history. That's expected — the test account exists to absorb that — but don't run the live contract on a tight loop. Re-run `leetcode-test-login` when the session cookie expires.
 
 CI alternative: set `LEETCODE_TEST_SESSION` and `LEETCODE_TEST_CSRF` env vars; `contracttest.LoadTestCreds` prefers env over the file when both are present.
+
+##### CI: refreshing the GitHub Actions secrets
+
+The `.github/workflows/live-contract.yml` action runs the live contract on every push to `main`, on PRs that touch `internal/leetcode/**` or `internal/auth/**`, and on a daily 07:00 UTC cron. It reads `LEETCODE_TEST_SESSION` and `LEETCODE_TEST_CSRF` from repo secrets.
+
+LeetCode session cookies expire every few weeks, after which the action will fail with auth errors. To refresh:
+
+1. Run `go run ./cmd/leetcode-test-login` locally and complete the browser login as the test account. The tool prints the path it wrote to (`<UserConfigDir>/leetcode-anki/test-creds.json` — on macOS that's `~/Library/Application Support/leetcode-anki/test-creds.json`).
+2. `cat` that file to read out the JSON; copy the `session` and `csrf` values.
+3. In the GitHub repo: **Settings → Secrets and variables → Actions** → update `LEETCODE_TEST_SESSION` (the `session` value) and `LEETCODE_TEST_CSRF` (the `csrf` value).
+4. Re-run the failed workflow.
