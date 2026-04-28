@@ -252,3 +252,52 @@ var chromaByLangSlug = map[string]string{
 	"mssql":     "tsql",
 	"oraclesql": "plsql",
 }
+
+var commentPrefixByLangSlug = map[string]string{
+	"golang":     "//",
+	"c":          "//",
+	"cpp":        "//",
+	"java":       "//",
+	"javascript": "//",
+	"typescript": "//",
+	"rust":       "//",
+	"swift":      "//",
+	"kotlin":     "//",
+	"scala":      "//",
+	"csharp":     "//",
+	"dart":       "//",
+	"php":        "//",
+	"python":     "#",
+	"python3":    "#",
+	"ruby":       "#",
+	"bash":       "#",
+	"elixir":     "#",
+	"mysql":      "--",
+	"mssql":      "--",
+	"oraclesql":  "--",
+	"postgresql": "--",
+	"erlang":     "%",
+	"racket":     ";",
+}
+
+// CommentBlock prefixes each line of body with langSlug's line-comment marker.
+// Empty body or an unmapped langSlug returns "" so callers can append the
+// result unconditionally without producing a comment block of the wrong shape.
+func CommentBlock(body, langSlug string) string {
+	if body == "" {
+		return ""
+	}
+	prefix, ok := commentPrefixByLangSlug[langSlug]
+	if !ok {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if line == "" {
+			lines[i] = prefix
+		} else {
+			lines[i] = prefix + " " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}

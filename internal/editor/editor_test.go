@@ -253,6 +253,60 @@ func TestHasAny_RejectsBadSlug(t *testing.T) {
 	}
 }
 
+func TestCommentBlock_PrefixByLang(t *testing.T) {
+	cases := []struct {
+		lang string
+		want string
+	}{
+		{"golang", "// hello\n// world"},
+		{"cpp", "// hello\n// world"},
+		{"java", "// hello\n// world"},
+		{"javascript", "// hello\n// world"},
+		{"rust", "// hello\n// world"},
+		{"swift", "// hello\n// world"},
+		{"php", "// hello\n// world"},
+		{"python", "# hello\n# world"},
+		{"python3", "# hello\n# world"},
+		{"ruby", "# hello\n# world"},
+		{"bash", "# hello\n# world"},
+		{"elixir", "# hello\n# world"},
+		{"mysql", "-- hello\n-- world"},
+		{"mssql", "-- hello\n-- world"},
+		{"oraclesql", "-- hello\n-- world"},
+		{"postgresql", "-- hello\n-- world"},
+		{"erlang", "% hello\n% world"},
+		{"racket", "; hello\n; world"},
+	}
+	for _, c := range cases {
+		if got := CommentBlock("hello\nworld", c.lang); got != c.want {
+			t.Errorf("CommentBlock(%q) = %q, want %q", c.lang, got, c.want)
+		}
+	}
+}
+
+func TestCommentBlock_EmptyBodyReturnsEmpty(t *testing.T) {
+	if got := CommentBlock("", "golang"); got != "" {
+		t.Errorf("CommentBlock empty body = %q, want empty", got)
+	}
+}
+
+func TestCommentBlock_UnknownLangReturnsEmpty(t *testing.T) {
+	// Unknown languages get no prefix table entry — return empty so the
+	// caller falls through to the bare snippet rather than producing a
+	// syntactically broken file with the wrong comment marker.
+	if got := CommentBlock("hello", "haskell"); got != "" {
+		t.Errorf("CommentBlock unknown lang = %q, want empty", got)
+	}
+}
+
+func TestCommentBlock_PreservesBlankLines(t *testing.T) {
+	got := CommentBlock("a\n\nb", "golang")
+	want := "// a\n//\n// b"
+	if got != want {
+		t.Errorf("CommentBlock blank-line body = %q, want %q", got, want)
+	}
+}
+
 func TestChromaLang(t *testing.T) {
 	cases := map[string]string{
 		"golang":  "go",

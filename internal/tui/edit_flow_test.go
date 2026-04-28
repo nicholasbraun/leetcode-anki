@@ -62,8 +62,14 @@ func TestEditFlow_ScaffoldsAndOpens(t *testing.T) {
 		t.Fatalf("Scaffold called %d times, want 1: %v", len(cache.scaffoldCalls), cache.scaffoldCalls)
 	}
 	got := cache.scaffoldCalls[0]
-	if got.Slug != "two-sum" || got.Lang != "golang" || got.Snippet != "package main\n" {
-		t.Errorf("Scaffold args = %+v, want {two-sum, golang, package main\\n}", got)
+	if got.Slug != "two-sum" || got.Lang != "golang" {
+		t.Errorf("Scaffold slug/lang = %+v, want {two-sum, golang, ...}", got)
+	}
+	if !strings.HasPrefix(got.Snippet, "package main\n") {
+		t.Errorf("Scaffold snippet should start with starter code; got %q", got.Snippet)
+	}
+	if !strings.Contains(got.Snippet, "// Find two numbers that sum to target.") {
+		t.Errorf("Scaffold snippet should include commented description line; got %q", got.Snippet)
 	}
 
 	if len(ed.openCalls) != 1 {
@@ -75,6 +81,25 @@ func TestEditFlow_ScaffoldsAndOpens(t *testing.T) {
 	}
 	if m.problem.solutionPath != wantPath {
 		t.Errorf("solutionPath = %q, want %q", m.problem.solutionPath, wantPath)
+	}
+}
+
+// Regression for paid problems and any other cases where ProblemDetail.Content
+// is empty: the scaffolded file must match the bare starter snippet exactly,
+// no trailing blank lines or stray comment markers.
+func TestEditFlow_EmptyDescription_ScaffoldsBareSnippet(t *testing.T) {
+	cache := newFakeCache()
+	ed := newFakeEditor()
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
+	m.currentProblem.Content = ""
+
+	_, _ = m.Update(keyEdit)
+
+	if len(cache.scaffoldCalls) != 1 {
+		t.Fatalf("Scaffold called %d times, want 1", len(cache.scaffoldCalls))
+	}
+	if got := cache.scaffoldCalls[0].Snippet; got != "package main\n" {
+		t.Errorf("Scaffold snippet = %q, want bare starter snippet %q", got, "package main\n")
 	}
 }
 

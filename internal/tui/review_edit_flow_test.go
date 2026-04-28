@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"leetcode-anki/internal/editor"
@@ -38,8 +39,16 @@ func TestEdit_InReviewMode_OpensTmpNotSolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read(%q) failed: %v", openedPath, err)
 	}
-	if got != "package main\n" {
-		t.Errorf("attempt seeded with %q, want the language snippet (%q) — never the canonical answer", got, "package main\n")
+	if !strings.HasPrefix(got, "package main\n") {
+		t.Errorf("attempt body should start with the language snippet; got %q", got)
+	}
+	if strings.Contains(got, "canonical answer") {
+		t.Errorf("attempt body leaked canonical answer: %q", got)
+	}
+	// Description belongs in Review Mode too — the user is recalling the
+	// solution code, not the problem statement.
+	if !strings.Contains(got, "// Find two numbers that sum to target.") {
+		t.Errorf("attempt body should include commented description; got %q", got)
 	}
 }
 

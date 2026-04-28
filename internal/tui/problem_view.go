@@ -164,6 +164,26 @@ func snippetFor(p *leetcode.ProblemDetail, langSlug string) string {
 	return ""
 }
 
+// composeScaffoldContent appends the problem description (HTML → markdown,
+// then line-commented per language) under the starter snippet. Returns the
+// bare snippet unchanged when the description is empty, the markdown
+// conversion errors, or the language has no comment-prefix mapping — so the
+// scaffolded file always at least contains the starter code.
+func composeScaffoldContent(snippet, langSlug, htmlContent string) string {
+	if htmlContent == "" {
+		return snippet
+	}
+	md, err := render.HTMLToMarkdown(htmlContent)
+	if err != nil {
+		return snippet
+	}
+	block := editor.CommentBlock(strings.TrimSpace(md), langSlug)
+	if block == "" {
+		return snippet
+	}
+	return strings.TrimRight(snippet, "\n") + "\n\n" + block + "\n"
+}
+
 // pickDefaultLang chooses an initial language for a problem. A language with
 // an existing cached Solution wins so the user lands back on the one they
 // last worked in. Otherwise: golang → python3 → first available.
@@ -242,9 +262,10 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case keyMatch(km, keys.Edit):
 			snippet := snippetFor(m.currentProblem, pv.chosenLang)
+			content := composeScaffoldContent(snippet, pv.chosenLang, m.currentProblem.Content)
 			if m.reviewMode {
 				if pv.attemptPath == "" {
-					path, err := m.cache.ScaffoldAttemptTmp(pv.chosenLang, snippet)
+					path, err := m.cache.ScaffoldAttemptTmp(pv.chosenLang, content)
 					if err != nil {
 						m.err = err
 						return m, nil
@@ -253,7 +274,7 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, m.editor.Open(pv.attemptPath)
 			}
-			path, err := m.cache.Scaffold(m.currentProblem.TitleSlug, pv.chosenLang, snippet)
+			path, err := m.cache.Scaffold(m.currentProblem.TitleSlug, pv.chosenLang, content)
 			if err != nil {
 				m.err = err
 				return m, nil
