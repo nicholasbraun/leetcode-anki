@@ -31,6 +31,11 @@ type LeetcodeClient interface {
 // edit flow can be exercised in tests without writing to a real cache.
 type SolutionCache interface {
 	Scaffold(titleSlug, langSlug, snippet string) (string, error)
+	// ScaffoldAttemptTmp writes the language snippet to a fresh temp file
+	// and returns its path. Used in Review Mode so the user can attempt a
+	// Problem without the canonical Solution being opened in $EDITOR. The
+	// OS reclaims the file; we don't track it past process exit.
+	ScaffoldAttemptTmp(langSlug, snippet string) (string, error)
 	Read(path string) (string, error)
 	ExistingPath(titleSlug, langSlug string) string
 	SlugsWith() (map[string]bool, error)

@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/leetcode/leetcodefake"
 )
 
 func TestProblemDetailLayout(t *testing.T) {
@@ -27,6 +31,67 @@ func TestProblemDetailLayout(t *testing.T) {
 			t.Errorf("descW=%d, want 80", descW)
 		}
 	})
+}
+
+// solutionMarker is a string seeded into the rendered solution viewport so
+// the render tests can assert whether the cached Solution leaks into the
+// rendered view. Picked to be unlikely to appear in chrome / footer text.
+const solutionMarker = "ZZ_TWOSUM_MARKER_ZZ"
+
+// onDetailScreenWithSolution parks a Model on the problem detail screen
+// with a cached Solution already rendered into the right pane viewport.
+// The solution viewport's rendered content embeds solutionMarker so tests
+// can detect leakage.
+func onDetailScreenWithSolution(t *testing.T, reviewMode bool) *Model {
+	t.Helper()
+	cache := newFakeCache()
+	ed := newFakeEditor()
+	m := NewModel(context.Background(), &leetcodefake.Fake{}, cache, ed, newFakeReviews())
+	m.width, m.height = 140, 40
+	m.reviewMode = reviewMode
+	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
+	m.currentProblem = problemDetailFor("two-sum")
+	m.problem = newProblemView(cache, 100, 30)
+	m.problem.chosenLang = "golang"
+	descW, descH, solW, solH := problemDetailLayout(m.width, m.height)
+	m.problem.rendered = "Two Sum description body"
+	m.problem.vp.Width = descW
+	m.problem.vp.Height = descH
+	m.problem.vp.SetContent(m.problem.rendered)
+	m.problem.solutionPath = "/fake/two-sum/solution.golang"
+	m.problem.solutionRendered = "func twoSum(nums []int) []int { /* " + solutionMarker + " */ }"
+	m.problem.solutionVP.Width = solW
+	m.problem.solutionVP.Height = solH
+	m.problem.solutionVP.SetContent(m.problem.solutionRendered)
+	m.screen = screenProblem
+	return m
+}
+
+// In Review Mode the right pane must NOT render the cached Solution —
+// the whole point of Review is recall. The placeholder appears instead.
+func TestProblemView_ReviewMode_HidesSolutionPreview(t *testing.T) {
+	m := onDetailScreenWithSolution(t, true)
+	view := viewProblemView(m)
+	if strings.Contains(view, solutionMarker) {
+		t.Errorf("Review Mode leaked the cached Solution into the right pane:\n%s", view)
+	}
+	if !strings.Contains(strings.ToLower(view), "solution hidden in review mode") {
+		t.Errorf("Review Mode placeholder missing from right pane:\n%s", view)
+	}
+}
+
+// Regression for the existing behavior: Explore Mode keeps showing the
+// cached Solution. Asserts the marker IS present so a future "always hide"
+// regression would be caught.
+func TestProblemView_ExploreMode_ShowsSolutionPreview(t *testing.T) {
+	m := onDetailScreenWithSolution(t, false)
+	view := viewProblemView(m)
+	if !strings.Contains(view, solutionMarker) {
+		t.Errorf("Explore Mode dropped the cached Solution from the right pane:\n%s", view)
+	}
+	if strings.Contains(strings.ToLower(view), "solution hidden in review mode") {
+		t.Errorf("Explore Mode rendered the Review-Mode placeholder:\n%s", view)
+	}
 }
 
 func TestStatusBadge(t *testing.T) {

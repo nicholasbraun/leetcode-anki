@@ -23,10 +23,25 @@ type problemView struct {
 	pickingLang      bool
 	langCursor       int
 	solutionPath     string
+	// attemptPath is the path the user is editing in Review Mode. Scaffolded
+	// from the language snippet on first 'e' so the canonical solutionPath
+	// (which contains the answer) is never opened in $EDITOR. Reset per
+	// Problem so each Review starts with a fresh attempt buffer.
+	attemptPath      string
 	status           *string
 	hasSolution      bool
 	solutionVP       viewport.Model
 	solutionRendered string
+}
+
+// editPath returns the path the user is currently editing — the canonical
+// Solution in Explore Mode, the scratch attempt in Review Mode. Empty when
+// no scaffold has happened yet on this Problem.
+func (pv *problemView) editPath(reviewMode bool) string {
+	if reviewMode {
+		return pv.attemptPath
+	}
+	return pv.solutionPath
 }
 
 func newProblemView(cache SolutionCache, width, height int) problemView {
@@ -219,6 +234,17 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case keyMatch(km, keys.Edit):
 			snippet := snippetFor(m.currentProblem, pv.chosenLang)
+			if m.reviewMode {
+				if pv.attemptPath == "" {
+					path, err := m.cache.ScaffoldAttemptTmp(pv.chosenLang, snippet)
+					if err != nil {
+						m.err = err
+						return m, nil
+					}
+					pv.attemptPath = path
+				}
+				return m, m.editor.Open(pv.attemptPath)
+			}
 			path, err := m.cache.Scaffold(m.currentProblem.TitleSlug, pv.chosenLang, snippet)
 			if err != nil {
 				m.err = err
@@ -227,21 +253,23 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			pv.solutionPath = path
 			return m, m.editor.Open(path)
 		case keyMatch(km, keys.Run):
-			if pv.solutionPath == "" {
+			path := pv.editPath(m.reviewMode)
+			if path == "" {
 				m.err = fmt.Errorf("nothing to run — press 'e' to write a solution first")
 				return m, nil
 			}
 			m.err = nil
-			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
+			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, path)
 			m.cancelInflight = cancel
 			return m, tea.Batch(m.load.Start(KindRun, "running"), cmd)
 		case keyMatch(km, keys.Submit):
-			if pv.solutionPath == "" {
+			path := pv.editPath(m.reviewMode)
+			if path == "" {
 				m.err = fmt.Errorf("nothing to submit — press 'e' to write a solution first")
 				return m, nil
 			}
 			m.err = nil
-			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, pv.solutionPath)
+			cmd, cancel := submitCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, path)
 			m.cancelInflight = cancel
 			return m, tea.Batch(m.load.Start(KindSubmit, "submitting"), cmd)
 		case keyMatch(km, keys.NextProb):
@@ -330,7 +358,10 @@ func viewProblemView(m *Model) string {
 
 	// Two-pane layout. Top divider carries left and right labels around ╮.
 	rightLabel := "no solution yet"
-	if pv.solutionPath != "" {
+	switch {
+	case m.reviewMode:
+		rightLabel = "review mode"
+	case pv.solutionPath != "":
 		rightLabel = filepath.Base(pv.solutionPath)
 	}
 	leftDiv := divider(descW, leftLabel, 0, "")
@@ -344,11 +375,16 @@ func viewProblemView(m *Model) string {
 	}
 	descBox := lipgloss.NewStyle().Width(descW).Height(descH).Render(descBody)
 
-	// Right pane content: cached solution or scaffold prompt.
+	// Right pane content: in Review Mode the cached Solution must not be
+	// shown — Review is testing recall. Otherwise: cached solution if we
+	// have one, scaffold prompt if not.
 	var solBody string
-	if pv.solutionPath != "" {
+	switch {
+	case m.reviewMode:
+		solBody = renderReviewSolutionHidden()
+	case pv.solutionPath != "":
 		solBody = pv.solutionVP.View()
-	} else {
+	default:
 		solBody = renderScaffoldPrompt(m.currentProblem)
 	}
 
@@ -386,6 +422,21 @@ func runStatus(m *Model) string {
 		return m.load.Inline()
 	}
 	return ""
+}
+
+// renderReviewSolutionHidden is the right-pane body in Review Mode. The
+// cached Solution must not be visible — Review is testing recall — so the
+// pane carries a placeholder plus the same edit/run/submit hints that
+// apply to the (hidden) attempt buffer.
+func renderReviewSolutionHidden() string {
+	return strings.Join([]string{
+		"",
+		dimStyle.Render("solution hidden in review mode"),
+		"",
+		dimStyle.Render("press  ") + footerKeyStyle.Render("e") + dimStyle.Render("  to open a fresh attempt"),
+		dimStyle.Render("press  ") + footerKeyStyle.Render("r") + dimStyle.Render("  to run"),
+		dimStyle.Render("press  ") + footerKeyStyle.Render("s") + dimStyle.Render("  to submit"),
+	}, "\n")
 }
 
 // renderScaffoldPrompt is the right-pane body for problems that don't have

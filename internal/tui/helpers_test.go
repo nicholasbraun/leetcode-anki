@@ -19,15 +19,24 @@ import (
 // behave like a real on-disk cache without touching the filesystem.
 type fakeCache struct {
 	mu    sync.Mutex
-	files map[string]string // key: slug+"::"+lang
+	files map[string]string // key: slug+"::"+lang for canonical, or "tmp::"+path for attempts
 	paths map[string]string // canonical path per (slug, lang)
 
-	scaffoldCalls []scaffoldCall
-	readCalls     []string
+	scaffoldCalls        []scaffoldCall
+	attemptScaffoldCalls []attemptScaffoldCall
+	readCalls            []string
+
+	// nextAttemptSeq names successive attempt files deterministically so
+	// tests can spot accidental re-scaffolds.
+	nextAttemptSeq int
 }
 
 type scaffoldCall struct {
 	Slug, Lang, Snippet string
+}
+
+type attemptScaffoldCall struct {
+	Lang, Snippet string
 }
 
 func newFakeCache() *fakeCache {
@@ -53,10 +62,23 @@ func (c *fakeCache) Scaffold(slug, lang, snippet string) (string, error) {
 	return path, nil
 }
 
+func (c *fakeCache) ScaffoldAttemptTmp(lang, snippet string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.attemptScaffoldCalls = append(c.attemptScaffoldCalls, attemptScaffoldCall{lang, snippet})
+	c.nextAttemptSeq++
+	path := fmt.Sprintf("/fake/tmp/attempt-%d.%s", c.nextAttemptSeq, lang)
+	c.files["tmp::"+path] = snippet
+	return path, nil
+}
+
 func (c *fakeCache) Read(path string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.readCalls = append(c.readCalls, path)
+	if content, ok := c.files["tmp::"+path]; ok {
+		return content, nil
+	}
 	for k, p := range c.paths {
 		if p == path {
 			return c.files[k], nil
@@ -95,6 +117,14 @@ func (c *fakeCache) HasAny(slug string) bool {
 		}
 	}
 	return false
+}
+
+// writeAttempt seeds the contents of an attempt file at path, simulating
+// the user having edited the scaffolded attempt in $EDITOR.
+func (c *fakeCache) writeAttempt(path, content string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.files["tmp::"+path] = content
 }
 
 // writeSolution seeds the cache as if the user had already saved a file at
