@@ -94,6 +94,33 @@ func TestProblemView_ExploreMode_ShowsSolutionPreview(t *testing.T) {
 	}
 }
 
+// After the user has pressed 'e' in Review Mode, the right pane must show
+// the attempt content (NOT the canonical Solution, NOT the placeholder).
+// The placeholder's job is only to gate the *initial* view before the user
+// has committed to attempting; once they've engaged, they want to read
+// their attempt alongside the description.
+func TestProblemView_ReviewMode_AfterAttempt_ShowsAttempt(t *testing.T) {
+	const attemptMarker = "ZZ_ATTEMPT_MARKER_ZZ"
+	m := onDetailScreenWithSolution(t, true)
+	// Simulate post-'e' state: an attempt exists with distinguishable
+	// content, and renderForLayout has rendered it into the right-pane
+	// viewport (replacing whatever the canonical preview held).
+	m.problem.attemptPath = "/fake/tmp/attempt-1.golang"
+	m.problem.solutionRendered = "// " + attemptMarker + "\nfunc twoSum() {}"
+	m.problem.solutionVP.SetContent(m.problem.solutionRendered)
+
+	view := viewProblemView(m)
+	if !strings.Contains(view, attemptMarker) {
+		t.Errorf("Review Mode + attempt should show the attempt's content:\n%s", view)
+	}
+	if strings.Contains(view, solutionMarker) {
+		t.Errorf("canonical Solution leaked alongside the attempt:\n%s", view)
+	}
+	if strings.Contains(strings.ToLower(view), "solution hidden in review mode") {
+		t.Errorf("placeholder rendered after attempt was scaffolded:\n%s", view)
+	}
+}
+
 func TestStatusBadge(t *testing.T) {
 	ac := "ACCEPTED"
 	acShort := "AC"

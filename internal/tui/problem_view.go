@@ -84,9 +84,17 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 
 	pv.solutionVP.Width = solW
 	pv.solutionVP.Height = solH
-	if solW > 0 && pv.solutionPath != "" {
+	// Choose what to render into the right pane. An attempt path (set
+	// only by Review Mode 'e') wins over the canonical Solution — once
+	// the user is attempting, they want to see their work, not the
+	// previously-Accepted answer.
+	codePath := pv.solutionPath
+	if pv.attemptPath != "" {
+		codePath = pv.attemptPath
+	}
+	if solW > 0 && codePath != "" {
 		// Best-effort: render errors don't block the description pane.
-		sol, _ := pv.renderCachedSolution(p.TitleSlug, pv.chosenLang, solW-4)
+		sol, _ := pv.renderCodeAt(codePath, pv.chosenLang, solW-4)
 		pv.solutionRendered = sol
 		pv.solutionVP.SetContent(sol)
 		pv.solutionVP.GotoTop()
@@ -97,11 +105,11 @@ func (pv *problemView) renderForLayout(p *leetcode.ProblemDetail, totalWidth, to
 	return nil
 }
 
-// renderCachedSolution loads the cached solution file for slug+langSlug
-// and renders it through glamour as a fenced code block so chroma applies
-// syntax highlighting. Returns "" (no error) when no file is cached.
-func (pv *problemView) renderCachedSolution(slug, langSlug string, width int) (string, error) {
-	path := pv.cache.ExistingPath(slug, langSlug)
+// renderCodeAt loads the file at path and renders it through glamour as
+// a fenced code block so chroma applies syntax highlighting. Used for
+// both the canonical cached Solution and Review-Mode attempt files.
+// Returns "" (no error) when path is empty.
+func (pv *problemView) renderCodeAt(path, langSlug string, width int) (string, error) {
 	if path == "" {
 		return "", nil
 	}
@@ -375,14 +383,15 @@ func viewProblemView(m *Model) string {
 	}
 	descBox := lipgloss.NewStyle().Width(descW).Height(descH).Render(descBody)
 
-	// Right pane content: in Review Mode the cached Solution must not be
-	// shown — Review is testing recall. Otherwise: cached solution if we
-	// have one, scaffold prompt if not.
+	// Right pane content. The placeholder gates the *initial* Review-Mode
+	// view so the canonical Solution doesn't leak before the user has
+	// committed to attempting; once they've pressed 'e' (attemptPath set),
+	// the pane shows their attempt content alongside the description.
 	var solBody string
 	switch {
-	case m.reviewMode:
+	case m.reviewMode && pv.attemptPath == "":
 		solBody = renderReviewSolutionHidden()
-	case pv.solutionPath != "":
+	case pv.solutionRendered != "":
 		solBody = pv.solutionVP.View()
 	default:
 		solBody = renderScaffoldPrompt(m.currentProblem)

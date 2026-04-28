@@ -118,8 +118,14 @@ func TestEditorDoneMsg_WithError(t *testing.T) {
 	ed := newFakeEditor()
 	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
 
+	// Mirror the production Edit flow: Scaffold runs and sets solutionPath
+	// before the editor is invoked. The scaffolded file survives even if
+	// $EDITOR exits non-zero, so hasSolution should still be marked.
+	path := cache.writeSolution("two-sum", "golang", "package main\n")
+	m.problem.solutionPath = path
+
 	editorErr := errors.New("editor exited 1")
-	_, _ = m.Update(editor.EditorDoneMsg{Path: "/fake/two-sum/solution.golang", Err: editorErr})
+	_, _ = m.Update(editor.EditorDoneMsg{Path: path, Err: editorErr})
 
 	if m.err == nil {
 		t.Fatal("m.err = nil, want editor error to surface")
@@ -127,8 +133,6 @@ func TestEditorDoneMsg_WithError(t *testing.T) {
 	if !strings.Contains(m.err.Error(), "editor exited 1") {
 		t.Errorf("m.err = %v, want it to contain editor's error", m.err)
 	}
-	// Scaffold writes the file before Open is invoked, so the Solution
-	// survives an editor crash. hasSolution should still be set.
 	if !m.problem.hasSolution {
 		t.Error("hasSolution = false on EditorDoneMsg with error; the scaffolded file still exists on disk")
 	}

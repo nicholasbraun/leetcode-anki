@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/leetcode/leetcodefake"
 )
@@ -154,6 +155,59 @@ func TestSubmit_InReviewMode_ReadsTmpFile(t *testing.T) {
 		}
 	default:
 		t.Fatal("Submit hook never invoked")
+	}
+}
+
+// Editing the attempt in Review Mode must NOT mark the slug as having a
+// canonical local Solution. The editor was opened on a temp attempt
+// path, not on solution.<ext>; flipping hasSolution / solutionSlugs
+// would mislead the lists screen and the in-progress glyph.
+func TestEditorDoneMsg_InReviewMode_DoesNotMarkSolution(t *testing.T) {
+	cache := newFakeCache()
+	ed := newFakeEditor()
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
+	m.reviewMode = true
+	// No canonical Solution exists yet — solutionPath stays empty.
+	if m.problem.solutionPath != "" {
+		t.Fatalf("precondition: solutionPath should be empty, got %q", m.problem.solutionPath)
+	}
+	if m.problem.hasSolution {
+		t.Fatal("precondition: hasSolution should be false")
+	}
+
+	_, _ = m.Update(keyEdit)
+	attemptPath := m.problem.attemptPath
+	if attemptPath == "" {
+		t.Fatal("precondition: 'e' should have set attemptPath")
+	}
+
+	_, _ = m.Update(editor.EditorDoneMsg{Path: attemptPath})
+
+	if m.problem.hasSolution {
+		t.Error("hasSolution flipped to true after editing the attempt — only canonical edits should mark it")
+	}
+	if m.solutionSlugs["two-sum"] {
+		t.Error("solutionSlugs[two-sum] = true after editing the attempt — only canonical edits should mark it")
+	}
+}
+
+// Regression for the existing flow: an EditorDoneMsg whose Path matches
+// the canonical solutionPath does mark hasSolution / solutionSlugs.
+func TestEditorDoneMsg_OnSolutionPath_MarksSolution(t *testing.T) {
+	cache := newFakeCache()
+	ed := newFakeEditor()
+	m := onProblemScreen("two-sum", cache, ed, &leetcodefake.Fake{})
+
+	path := cache.writeSolution("two-sum", "golang", "package main\n")
+	m.problem.solutionPath = path
+
+	_, _ = m.Update(editor.EditorDoneMsg{Path: path})
+
+	if !m.problem.hasSolution {
+		t.Error("hasSolution = false after canonical edit, want true")
+	}
+	if !m.solutionSlugs["two-sum"] {
+		t.Error("solutionSlugs[two-sum] = false after canonical edit, want true")
 	}
 }
 

@@ -233,18 +233,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.Err
 		}
 		if m.currentProblem != nil {
-			slug := m.currentProblem.TitleSlug
-			if m.solutionSlugs == nil {
-				m.solutionSlugs = map[string]bool{}
-			}
-			m.solutionSlugs[slug] = true
-			m.problem.hasSolution = true
-			if m.problemsReady {
-				for i, it := range m.problems.Items() {
-					if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
-						pi.hasSolution = true
-						m.problems.SetItem(i, pi)
-						break
+			// Only mark the slug as having a local Solution when the
+			// editor was opened on the canonical solution.<ext>. Review
+			// Mode opens a temp attempt instead — editing it doesn't
+			// create or change a canonical Solution on disk.
+			if msg.Path != "" && msg.Path == m.problem.solutionPath {
+				slug := m.currentProblem.TitleSlug
+				if m.solutionSlugs == nil {
+					m.solutionSlugs = map[string]bool{}
+				}
+				m.solutionSlugs[slug] = true
+				m.problem.hasSolution = true
+				if m.problemsReady {
+					for i, it := range m.problems.Items() {
+						if pi, ok := it.(problemItem); ok && pi.q.TitleSlug == slug {
+							pi.hasSolution = true
+							m.problems.SetItem(i, pi)
+							break
+						}
 					}
 				}
 			}
