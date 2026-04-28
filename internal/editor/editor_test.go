@@ -111,6 +111,41 @@ func TestScaffold_RejectsBadSlug(t *testing.T) {
 	}
 }
 
+// Each Review-Mode attempt must live in its own directory. Go treats
+// every .go file in a directory as part of one package, so two
+// attempts in the same dir (current session + leftover, or two
+// different Problems back-to-back) would collide on duplicate function
+// names and surface as gopls errors in the user's editor.
+func TestScaffoldAttemptTmp_GivesEachAttemptOwnDir(t *testing.T) {
+	c := NewCache()
+	a, err := c.ScaffoldAttemptTmp("golang", "package main\nfunc twoSum() {}\n")
+	if err != nil {
+		t.Fatalf("first ScaffoldAttemptTmp: %v", err)
+	}
+	b, err := c.ScaffoldAttemptTmp("golang", "package main\nfunc twoSum() {}\n")
+	if err != nil {
+		t.Fatalf("second ScaffoldAttemptTmp: %v", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(filepath.Dir(a))
+		os.RemoveAll(filepath.Dir(b))
+	})
+
+	if filepath.Dir(a) == filepath.Dir(b) {
+		t.Errorf("two attempts share a parent directory %q — Go would treat them as duplicate package definitions", filepath.Dir(a))
+	}
+	body, err := os.ReadFile(a)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", a, err)
+	}
+	if string(body) != "package main\nfunc twoSum() {}\n" {
+		t.Errorf("attempt body = %q, want the seeded snippet", body)
+	}
+	if !strings.HasSuffix(a, ".go") {
+		t.Errorf("attempt path %q missing .go extension for golang lang", a)
+	}
+}
+
 func TestExistingPath_MissingFileReturnsEmpty(t *testing.T) {
 	redirectCacheDir(t)
 	c := NewCache()

@@ -99,20 +99,24 @@ func (c *Cache) Scaffold(titleSlug, langSlug, snippet string) (string, error) {
 	return path, nil
 }
 
-// ScaffoldAttemptTmp writes snippet to a fresh OS temp file with the
-// language's extension and returns its path. Review Mode uses this to
-// avoid opening the canonical solution.<ext> in $EDITOR — the user's
-// attempt is a separate file that exists for the process lifetime.
+// ScaffoldAttemptTmp writes snippet to a fresh per-attempt directory
+// under $TMPDIR and returns the path of the file inside. Review Mode
+// uses this to avoid opening the canonical solution.<ext> in $EDITOR.
+//
+// Each attempt gets its own directory so Go's "all .go files in a
+// directory share one package" rule doesn't cause duplicate-symbol
+// errors between concurrent attempts (or between this attempt and
+// leftover files from a prior session).
 func (c *Cache) ScaffoldAttemptTmp(langSlug, snippet string) (string, error) {
-	f, err := os.CreateTemp("", "leetcode-anki-attempt-*."+Ext(langSlug))
+	dir, err := os.MkdirTemp("", "leetcode-anki-attempt-*")
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	if _, err := f.WriteString(snippet); err != nil {
+	path := filepath.Join(dir, "solution."+Ext(langSlug))
+	if err := os.WriteFile(path, []byte(snippet), 0o644); err != nil {
 		return "", err
 	}
-	return f.Name(), nil
+	return path, nil
 }
 
 // Read returns the current contents of the solution file at path.
