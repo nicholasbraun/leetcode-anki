@@ -87,7 +87,28 @@ func TestDoGraphQL_AcceptsBodyJustUnderCap(t *testing.T) {
 	}
 }
 
+// resetDebugTruncForTest puts the debug-log truncation flag back into
+// "no first-call yet" state so each test starts deterministically,
+// regardless of test order or previous tests touching appendDebugLog.
+func resetDebugTruncForTest(t *testing.T) {
+	t.Helper()
+	debugTruncMu.Lock()
+	debugTruncated = false
+	debugTruncMu.Unlock()
+}
+
+// markDebugTruncForTest pretends the first-write truncation has already
+// happened, so subsequent appendDebugLog calls take the cap-enforcement
+// branch instead of truncating again.
+func markDebugTruncForTest(t *testing.T) {
+	t.Helper()
+	debugTruncMu.Lock()
+	debugTruncated = true
+	debugTruncMu.Unlock()
+}
+
 func TestDoGraphQL_AppendsRawResponseToDebugLog(t *testing.T) {
+	resetDebugTruncForTest(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
@@ -124,11 +145,13 @@ func TestDoGraphQL_AppendsRawResponseToDebugLog(t *testing.T) {
 	}
 }
 
-// Once debug.log passes debugLogMaxBytes, further appends are dropped
-// rather than rotated — the user is expected to `rm` the file to start
-// a new collection window. Without this cap an unattended LEETCODE_DEBUG
-// run could fill the cache partition.
+// Once a process has grown debug.log past debugLogMaxBytes, further
+// appends are dropped rather than rotated — without this cap an
+// unattended LEETCODE_DEBUG run could fill the cache partition. The cap
+// applies *after* the first-call truncation, so this test marks the
+// truncation as already done before pre-seeding.
 func TestAppendDebugLog_StopsWritingPastCap(t *testing.T) {
+	markDebugTruncForTest(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
@@ -140,8 +163,6 @@ func TestAppendDebugLog_StopsWritingPastCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	logPath := filepath.Join(dir, "debug.log")
-	// Pre-seed the log past the cap. Anything written after this should
-	// be dropped, so the file size must be unchanged.
 	preSeed := make([]byte, debugLogMaxBytes+1)
 	if err := os.WriteFile(logPath, preSeed, 0o600); err != nil {
 		t.Fatal(err)
@@ -156,6 +177,44 @@ func TestAppendDebugLog_StopsWritingPastCap(t *testing.T) {
 	if info.Size() != int64(len(preSeed)) {
 		t.Errorf("expected file size unchanged at %d, got %d (write past cap leaked through)",
 			len(preSeed), info.Size())
+	}
+}
+
+// The first appendDebugLog call in a process must truncate any
+// pre-existing log so each run starts with a fresh window. Without this
+// the file would retain the *first* 10 MiB recorded across all runs
+// rather than the most recent.
+func TestAppendDebugLog_TruncatesPreviousContentOnFirstWrite(t *testing.T) {
+	resetDebugTruncForTest(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	t.Setenv("LEETCODE_DEBUG", "1")
+
+	cacheDir, _ := os.UserCacheDir()
+	dir := filepath.Join(cacheDir, "leetcode-anki")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(dir, "debug.log")
+	if err := os.WriteFile(logPath, []byte("STALE-FROM-PREVIOUS-RUN\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	appendDebugLog("first", []byte(`{"a":1}`))
+	appendDebugLog("second", []byte(`{"b":2}`))
+
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	gotStr := string(got)
+	if strings.Contains(gotStr, "STALE-FROM-PREVIOUS-RUN") {
+		t.Errorf("stale content survived first write; got %q", gotStr)
+	}
+	want := "first\t{\"a\":1}\nsecond\t{\"b\":2}\n"
+	if gotStr != want {
+		t.Errorf("debug.log = %q, want %q", gotStr, want)
 	}
 }
 

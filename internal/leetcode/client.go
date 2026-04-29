@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"leetcode-anki/internal/auth"
@@ -199,15 +200,23 @@ func debugLogEnabled() bool {
 }
 
 // debugLogMaxBytes caps debug.log so an unattended LEETCODE_DEBUG run
-// can't fill the user's cache partition. Once the file passes the cap,
-// further writes are dropped (no rotation — the user is expected to
-// `rm` the file to start a new collection window).
+// can't fill the user's cache partition. Once the file passes the cap
+// within a single process, further writes are dropped. Each new process
+// starts fresh (truncate-on-first-write), so the cap bounds per-session
+// volume rather than lifetime volume.
 const debugLogMaxBytes = 10 * 1024 * 1024
 
+var (
+	debugTruncMu   sync.Mutex
+	debugTruncated bool
+)
+
 // appendDebugLog writes one line `<opName>\t<raw>` to the debug log
-// file. No-op when LEETCODE_DEBUG is unset, when the file is at or
-// past debugLogMaxBytes, or on any I/O failure: diagnostics must never
-// break the request path.
+// file. The first call in a process truncates any pre-existing log so
+// each run gets a fresh window (matches login-debug.log semantics).
+// Subsequent calls append until the file passes debugLogMaxBytes, after
+// which writes are dropped. No-op when LEETCODE_DEBUG is unset or on any
+// I/O failure: diagnostics must never break the request path.
 func appendDebugLog(opName string, raw []byte) {
 	if !debugLogEnabled() {
 		return
@@ -221,10 +230,21 @@ func appendDebugLog(opName string, raw []byte) {
 		return
 	}
 	path := filepath.Join(dir, "debug.log")
-	if info, err := os.Stat(path); err == nil && info.Size() >= debugLogMaxBytes {
+
+	flags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
+	debugTruncMu.Lock()
+	firstCall := !debugTruncated
+	debugTruncated = true
+	debugTruncMu.Unlock()
+	if firstCall {
+		flags = os.O_TRUNC | os.O_CREATE | os.O_WRONLY
+	} else if info, err := os.Stat(path); err == nil && info.Size() >= debugLogMaxBytes {
+		// Cap only applies after the first call; the first call always
+		// truncates regardless of pre-existing size.
 		return
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+
+	f, err := os.OpenFile(path, flags, 0o600)
 	if err != nil {
 		return
 	}
