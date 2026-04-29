@@ -101,6 +101,11 @@ func credsFromEnv() *auth.Credentials {
 	if sess == "" || csrf == "" {
 		return nil
 	}
+	// Clear the env so child processes (notably $EDITOR via tea.ExecProcess
+	// and any plugins it loads — LSPs, AI assistants, telemetry) don't
+	// inherit the live session cookie via os.Environ().
+	os.Unsetenv("LEETCODE_SESSION")
+	os.Unsetenv("LEETCODE_CSRF")
 	return &auth.Credentials{Session: sess, CSRF: csrf}
 }
 
