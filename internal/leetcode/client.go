@@ -22,6 +22,11 @@ const (
 	// UserAgent is sent on every request. LeetCode rejects requests that claim
 	// no UA at all; the value isn't otherwise validated server-side.
 	UserAgent = "Mozilla/5.0"
+	// maxResponseBytes caps each response body. The 30s client timeout
+	// bounds wall time but not bytes — a slow-trickling oversized body
+	// would still OOM the process. LeetCode's largest legitimate
+	// payloads (problem detail + submission detail) are well under this.
+	maxResponseBytes = 8 * 1024 * 1024
 )
 
 // httpDoer is the subset of *http.Client we depend on. Tests inject fakes
@@ -88,7 +93,7 @@ func (c *Client) doGraphQL(ctx context.Context, opName, query string, vars map[s
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := readBoundedBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -132,7 +137,7 @@ func (c *Client) doREST(ctx context.Context, method, url string, in any, out any
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := readBoundedBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read body: %w", err)
 	}
@@ -146,6 +151,21 @@ func (c *Client) doREST(ctx context.Context, method, url string, in any, out any
 		return nil
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// readBoundedBody reads up to maxResponseBytes from r. Anything larger
+// is rejected with an explicit error rather than truncated, so callers
+// don't try to JSON-decode a truncated response and get confusing
+// downstream errors.
+func readBoundedBody(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxResponseBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxResponseBytes)
+	}
+	return data, nil
 }
 
 // statusError builds a user-facing error for a non-2xx response.
