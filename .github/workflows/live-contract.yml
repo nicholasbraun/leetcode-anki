@@ -4,8 +4,9 @@
 # solution to LeetCode's judge each run.
 #
 # Cookie refresh: when the workflow starts failing with auth errors,
-# re-run `go run ./cmd/leetcode-test-login` locally and update the two
-# repo secrets. See CLAUDE.md "Live contract test against LeetCode".
+# grab fresh LEETCODE_SESSION and csrftoken cookies from a logged-in
+# browser session for the test account, and update the two repo
+# secrets. See CLAUDE.md "Live contract test against LeetCode".
 name: live-contract
 
 on:

@@ -13,8 +13,9 @@ import (
 // Resolution order:
 //
 //  1. Env vars LEETCODE_TEST_SESSION + LEETCODE_TEST_CSRF (CI path)
-//  2. auth.TestCredsPath() on disk (local-dev path; populate via
-//     `go run ./cmd/leetcode-test-login`)
+//  2. auth.TestCredsPath() on disk (local-dev path; populate by hand
+//     with the LEETCODE_SESSION + csrftoken values from a logged-in
+//     browser session for the test account)
 //
 // Missing creds are a t.Fatal, not a t.Skip: `go test` buffers per-test
 // stderr and only flushes it on failure or -v, so a t.Skip message would
@@ -49,7 +50,7 @@ func resolveTestCreds() (*auth.Credentials, string) {
 	}
 	c, err := auth.LoadFromPath(path)
 	if err != nil {
-		return nil, fmt.Sprintf("no test creds at %s (%v); populate via `go run ./cmd/leetcode-test-login`", path, err)
+		return nil, fmt.Sprintf("no test creds at %s (%v); set LEETCODE_TEST_SESSION + LEETCODE_TEST_CSRF env vars, or write that file as {\"session\":\"…\",\"csrf\":\"…\"} (mode 0600) using cookies from a logged-in browser session for the test account", path, err)
 	}
 	return c, ""
 }

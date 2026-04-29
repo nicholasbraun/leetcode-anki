@@ -36,9 +36,8 @@ I built this for three reasons:
 ### Prerequisites
 
 - Go 1.26.1+ (see [`go.mod`](go.mod))
-- Google Chrome / Chromium installed locally — used by `chromedp` for the
-  browser-based login flow
-- A LeetCode account
+- A LeetCode account, with an active session in any of Firefox, Chrome,
+  Safari, Edge, or Brave (or the cookies on hand for the manual paste flow)
 - `$VISUAL` or `$EDITOR` set (falls back to `vi`)
 
 ### Build and run
@@ -53,21 +52,58 @@ go build ./cmd/leetcode-anki      # produce ./leetcode-anki binary
 
 ### First-run authentication
 
-On first run a Chrome window opens at `https://leetcode.com/accounts/login/`.
-Log in normally (password, OAuth, whatever your account uses); once the URL
-leaves `/accounts/login/` the binary scrapes the `LEETCODE_SESSION` and
-`csrftoken` cookies and caches them at:
+Just run `leetcode-anki`. The binary picks credentials in this order, and
+verifies each against leetcode.com before using it:
+
+1. `LEETCODE_SESSION` + `LEETCODE_CSRF` env vars (no-disk-write fast path
+   for CI / shared machines).
+2. Cached `creds.json` from a previous successful login.
+3. Interactive login TUI.
+
+When the TUI runs, it shows a picker with two options (navigate with
+`↑/↓` or `j/k`, `enter` to confirm):
+
+- **Read cookies from your browser** — pulls `LEETCODE_SESSION` and
+  `csrftoken` directly from your local browser cookie stores (Firefox,
+  Chrome, Safari, Edge, Brave) without launching a browser. Priority is
+  Firefox first, then Chrome, Safari, Edge, Brave. On macOS, Chrome and
+  Safari may prompt for OS permissions (Keychain / Full Disk Access);
+  Firefox needs neither.
+- **Paste cookies manually** — copy `LEETCODE_SESSION` and `csrftoken`
+  from devtools (Application/Storage → Cookies → leetcode.com) and paste
+  them into a two-field form.
+
+If browser extraction can't find a usable cookie pair, the TUI auto-falls
+through to the paste form with the reason shown above the inputs — no
+need to dismiss an error and re-pick.
+
+After a successful login the credentials are cached at:
 
 ```
 $XDG_CONFIG_HOME/leetcode-anki/creds.json     # 0600
 # or on macOS: ~/Library/Application Support/leetcode-anki/creds.json
 ```
 
-To force re-auth (e.g. cookies expired):
+To wipe cached creds (e.g. cookies expired and you want a clean reset):
 
 ```sh
-leetcode-anki --logout
+leetcode-anki --logout    # delete creds.json, then exit
+leetcode-anki             # re-auth via the TUI
 ```
+
+If browser extraction misbehaves, check
+`$UserCacheDir/leetcode-anki/login-debug.log` — it's truncated and
+rewritten on every login attempt with the cookie stores kooky enumerated
+and the leetcode.com cookies it returned (cookie *values* are
+length-only, never logged).
+
+#### Offline / unreachable leetcode.com
+
+The verification step has a short timeout. A network-unreachable failure
+(no internet, DNS down, leetcode.com unreachable) is treated as
+"valid enough" — the cached credentials still let you launch the TUI;
+the first real API call is what surfaces a useful error. Only an
+affirmative rejection (401, etc.) bounces you into the login screen.
 
 ### On-disk layout
 
@@ -76,6 +112,7 @@ leetcode-anki --logout
 | `$UserConfigDir/leetcode-anki/creds.json`           | session + CSRF cookies (mode 0600)                                                       |
 | `$UserConfigDir/leetcode-anki/sr.json`              | spaced-repetition cache (per-slug submission timeline)                                   |
 | `$UserCacheDir/leetcode-anki/<slug>/solution.<ext>` | scaffolded solution files; never overwritten on re-scaffold so resumed work is preserved |
+| `$UserCacheDir/leetcode-anki/login-debug.log`       | login-flow diagnostic dump — truncated and rewritten on every login attempt              |
 | `$UserCacheDir/leetcode-anki/debug.log`             | raw GraphQL responses, only when `LEETCODE_DEBUG=1`                                      |
 
 ## Usage
@@ -136,8 +173,7 @@ SR cache and Review Mode rebuilds the timeline from those notes.
 
 ```
 cmd/leetcode-anki/main.go        single binary entry; wires auth → client → cache → reviews → TUI
-cmd/leetcode-test-login/main.go  populates test-account creds for the live contract suite
-internal/auth/                   chromedp browser login + creds cache (incl. test-creds path)
+internal/auth/                   browser-cookie / paste login + creds cache (incl. test-creds path)
 internal/leetcode/               GraphQL + REST client (questions, lists, run, submit, submissions, notes)
 internal/leetcode/leetcodefake/  method-level fake of *Client; shared by unit + contract tests
 internal/leetcode/contracttest/  shape-invariant contract suite + LoadTestCreds for live runs
@@ -252,9 +288,11 @@ One-time setup:
 
 1. Create a fresh leetcode.com account (don't reuse your personal one).
 2. Add the "Two Sum" problem to its Favorite Questions list.
-3. `go run ./cmd/leetcode-test-login` and complete the browser login as
-   the test account. Cookies land in
-   `<UserConfigDir>/leetcode-anki/test-creds.json` (mode 0600).
+3. Log into that account in your browser, grab `LEETCODE_SESSION` and
+   `csrftoken` from devtools (Application → Cookies → leetcode.com), and
+   either export them as `LEETCODE_TEST_SESSION` / `LEETCODE_TEST_CSRF`,
+   or write them to `<UserConfigDir>/leetcode-anki/test-creds.json` as
+   `{"session":"…","csrf":"…"}` (mode 0600).
 
 Run:
 

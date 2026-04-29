@@ -6,8 +6,8 @@ The canonical domain vocabulary lives in [CONTEXT.md](CONTEXT.md). Read it befor
 
 ## Layout
 
-- `cmd/leetcode-anki/main.go` — single binary entry. Flags: `--logout` (forces re-auth via chromedp).
-- `internal/auth/` — chromedp browser login + creds cache at `os.UserConfigDir()/leetcode-anki/creds.json` (mode `0600`).
+- `cmd/leetcode-anki/main.go` — single binary entry. Resolves credentials in order: `LEETCODE_SESSION`+`LEETCODE_CSRF` env vars (no-write fast path) → cached `creds.json` → interactive login TUI. Each step Verify's the credentials before accepting (network errors are treated as "valid enough" so offline runs don't loop into login). Flag: `--logout` (delete cached creds).
+- `internal/auth/` — login TUI (`RunLoginTUI`) with two methods: read cookies from local browser stores via `browserutils/kooky`, or paste manually. Creds cache at `os.UserConfigDir()/leetcode-anki/creds.json` (mode `0600`). Browser priority: Firefox → Chrome → Safari → Edge → Brave. Diagnostic dump per login attempt at `<UserCacheDir>/leetcode-anki/login-debug.log` (truncated each run).
 - `internal/leetcode/` — GraphQL + REST client. **All headers (`Cookie`, `x-csrftoken`, `Referer`) centralized in `client.setHeaders`** — never set them anywhere else. Run/submit poll `/submissions/detail/{id}/check/` until `state == "SUCCESS"`.
 - `internal/render/html.go` — HTML → markdown for problem descriptions.
 - `internal/editor/` — solution scaffolding under `os.UserCacheDir()/leetcode-anki/<slug>/solution.<ext>` + `tea.ExecProcess` editor invocation. Existing files are never overwritten so users can resume.
@@ -71,7 +71,9 @@ Use a dedicated test account so writes don't leak into your personal profile. On
 
 1. Create a fresh leetcode.com account (don't reuse your personal one).
 2. Add the "Two Sum" problem to that account's "Favorite Questions" list.
-3. Run `go run ./cmd/leetcode-test-login` and complete login as the test account. Cookies land in `<UserConfigDir>/leetcode-anki/test-creds.json`.
+3. Log into the test account in your browser, grab `LEETCODE_SESSION` and `csrftoken` from devtools (Application → Cookies → leetcode.com), and either:
+   - export them as `LEETCODE_TEST_SESSION` / `LEETCODE_TEST_CSRF`, **or**
+   - write them to `<UserConfigDir>/leetcode-anki/test-creds.json` as `{"session":"…","csrf":"…"}` (file mode 0600).
 
 Run the live contract:
 
@@ -79,9 +81,9 @@ Run the live contract:
 go test -tags integration ./internal/leetcode/...
 ```
 
-Each run submits the fixture's known passing solution to LeetCode's judge, which adds an entry to the test account's submission history. That's expected — the test account exists to absorb that — but don't run the live contract on a tight loop. Re-run `leetcode-test-login` when the session cookie expires.
+Each run submits the fixture's known passing solution to LeetCode's judge, which adds an entry to the test account's submission history. That's expected — the test account exists to absorb that — but don't run the live contract on a tight loop. Refresh the env vars or `test-creds.json` when the session cookie expires (every few weeks).
 
-CI alternative: set `LEETCODE_TEST_SESSION` and `LEETCODE_TEST_CSRF` env vars; `contracttest.LoadTestCreds` prefers env over the file when both are present.
+`contracttest.LoadTestCreds` prefers env over the file when both are present, so CI and local can coexist.
 
 ##### CI: refreshing the GitHub Actions secrets
 
@@ -89,7 +91,6 @@ The `.github/workflows/live-contract.yml` action runs the live contract on every
 
 LeetCode session cookies expire every few weeks, after which the action will fail with auth errors. To refresh:
 
-1. Run `go run ./cmd/leetcode-test-login` locally and complete the browser login as the test account. The tool prints the path it wrote to (`<UserConfigDir>/leetcode-anki/test-creds.json` — on macOS that's `~/Library/Application Support/leetcode-anki/test-creds.json`).
-2. `cat` that file to read out the JSON; copy the `session` and `csrf` values.
-3. In the GitHub repo: **Settings → Secrets and variables → Actions** → update `LEETCODE_TEST_SESSION` (the `session` value) and `LEETCODE_TEST_CSRF` (the `csrf` value).
-4. Re-run the failed workflow.
+1. Log into the **test account** in your browser, open devtools → Application → Cookies → `https://leetcode.com`, and copy the `LEETCODE_SESSION` and `csrftoken` values.
+2. In the GitHub repo: **Settings → Secrets and variables → Actions** → update `LEETCODE_TEST_SESSION` (the `LEETCODE_SESSION` value) and `LEETCODE_TEST_CSRF` (the `csrftoken` value).
+3. Re-run the failed workflow.

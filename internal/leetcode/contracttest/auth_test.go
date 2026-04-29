@@ -6,10 +6,10 @@ import (
 )
 
 // When neither env vars nor a creds file are present, the resolver must
-// hand back an instruction string that names the populate command. This
-// exact text is what LoadTestCreds passes to t.Fatal — it's the only
-// thing a fresh clone running `go test -tags integration ./...` sees
-// when the live contract can't run.
+// hand back an instruction string that names the env vars. This exact
+// text is what LoadTestCreds passes to t.Fatal — it's the only thing a
+// fresh clone running `go test -tags integration ./...` sees when the
+// live contract can't run.
 func TestResolveTestCreds_MissingEverywhere_ReturnsSetupPointer(t *testing.T) {
 	t.Setenv("LEETCODE_TEST_SESSION", "")
 	t.Setenv("LEETCODE_TEST_CSRF", "")
@@ -23,8 +23,8 @@ func TestResolveTestCreds_MissingEverywhere_ReturnsSetupPointer(t *testing.T) {
 	if creds != nil {
 		t.Fatalf("creds = %+v, want nil with no env/file", creds)
 	}
-	if !strings.Contains(msg, "leetcode-test-login") {
-		t.Errorf("setup pointer missing the populate command name: %q", msg)
+	if !strings.Contains(msg, "LEETCODE_TEST_SESSION") {
+		t.Errorf("setup pointer missing the env-var name: %q", msg)
 	}
 }
 
