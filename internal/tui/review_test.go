@@ -318,6 +318,62 @@ func TestReviewMode_EmptyState(t *testing.T) {
 	}
 }
 
+// The Review-Mode header surfaces both the in-queue counts and the
+// uncapped totals so the user can see "I'm reviewing 2 of 7 due". The
+// "of" form makes it obvious the cap is hiding more — without it, "2
+// due" looks like the whole story.
+func TestReviewMode_HeaderShowsCountsAndTotals(t *testing.T) {
+	fc := &leetcodefake.Fake{}
+	fr := newFakeReviews()
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m.width, m.height = 140, 40
+	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
+	m.reviewMode = true
+	m.problemsAll = []Problem{
+		{TitleSlug: "a", Title: "A", QuestionFrontendID: "1"},
+		{TitleSlug: "b", Title: "B", QuestionFrontendID: "2"},
+	}
+	m.session = &sr.Session{
+		Items: []sr.SessionItem{
+			{Kind: sr.KindDue, TitleSlug: "a"},
+			{Kind: sr.KindNew, TitleSlug: "b"},
+		},
+		DueCount: 2, NewCount: 1, DueTotal: 7, NewTotal: 4,
+	}
+	m.problemsReady = true
+	m.screen = screenProblems
+	m.problems = newProblemsList(140, 30, m.problemsAll, "X", nil, nil)
+
+	view := viewProblemsView(m)
+	for _, want := range []string{"2 of 7 due", "1 of 4 new"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("expected header to contain %q; got:\n%s", want, view)
+		}
+	}
+}
+
+// When the Session call failed and session is nil but the user is still
+// in Review Mode (defensive fallback path), the header degrades to a
+// plain count rather than rendering "0 of 0 due, 0 of 0 new" noise.
+func TestReviewMode_HeaderFallbackWhenSessionNil(t *testing.T) {
+	fc := &leetcodefake.Fake{}
+	fr := newFakeReviews()
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m.width, m.height = 140, 40
+	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
+	m.reviewMode = true
+	m.session = nil
+	m.problemsAll = []Problem{{TitleSlug: "a", Title: "A", QuestionFrontendID: "1"}}
+	m.problemsReady = true
+	m.screen = screenProblems
+	m.problems = newProblemsList(140, 30, m.problemsAll, "X", nil, nil)
+
+	view := viewProblemsView(m)
+	if strings.Contains(view, "of 0 due") {
+		t.Errorf("fallback header must not show 'of 0 due'; got:\n%s", view)
+	}
+}
+
 // In Review Mode, the breadcrumb must say "review mode" so the user knows
 // they're not browsing a Problem List.
 func TestReviewMode_BreadcrumbReflectsMode(t *testing.T) {

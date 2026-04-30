@@ -200,6 +200,20 @@ func sessionBadges(session *sr.Session, now time.Time) map[string]string {
 	return out
 }
 
+// reviewLabel formats the Review-Mode header. With a session, surfaces
+// "X of Y due · A of B new" so the user can see the cap is hiding more
+// than what's queued. The fallback (no session — Session call failed
+// and the user is in the defensive "show full list" path) reads as
+// plain "Review (N)" rather than zeros that look like a real result.
+func reviewLabel(session *sr.Session, fallbackCount int) string {
+	if session == nil {
+		return fmt.Sprintf("Review  (%d)", fallbackCount)
+	}
+	return fmt.Sprintf("Review  (%d of %d due · %d of %d new)",
+		session.DueCount, session.DueTotal,
+		session.NewCount, session.NewTotal)
+}
+
 // humanizeOverdue formats how far in the past a SessionItem's NextDue
 // is from now. Inverse of humanizeDue (result_view.go), with shorter
 // unit suffixes that fit a per-row badge column.
@@ -310,7 +324,7 @@ func viewProblemsView(m *Model) string {
 	count := len(m.problems.Items())
 	if m.reviewMode {
 		crumbs = breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name, "review mode")
-		label = fmt.Sprintf("Due for review  (%d)", count)
+		label = reviewLabel(m.session, count)
 	} else {
 		crumbs = breadcrumb(w, "leetcode-anki", "lists", m.currentList.Name)
 		label = fmt.Sprintf("Problems  (%d)", count)
