@@ -26,6 +26,7 @@ type API interface {
 	InterpretSolution(ctx context.Context, slug, lang, qid, code, in, meta string) (*leetcode.RunResult, error)
 	Submit(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error)
 	UpdateSubmissionNote(ctx context.Context, submissionID, note string, tagIDs []int, flagType string) error
+	Verify(ctx context.Context) (leetcode.UserStatus, error)
 }
 
 // PassingSolution is a known-accepted solution for the fixture's problem.
@@ -74,6 +75,26 @@ func ContractTest(t *testing.T, api API, fx Fixture) {
 	// FavoriteQuestionList/known-list-has-questions. Subtests are
 	// sequential so a closure-captured value is safe here.
 	var listSlugWithContent string
+
+	t.Run("Verify/decodes-user-status", func(t *testing.T) {
+		// The live test account is logged in (creds were just loaded);
+		// IsSignedIn must be true. IsPremium can be either — most test
+		// accounts are free, but the assertion is "decodes" not "is X",
+		// so a premium tester's run still passes. If the wire field
+		// `isPremium` is renamed/removed by LeetCode, this subtest still
+		// passes (decode returns false) — the regression surfaces only
+		// when a downstream consumer notices premium recommendations
+		// reappearing for a free account. Tradeoff acknowledged: pinning
+		// a specific value would require a fixture-controlled plan,
+		// which the current single-test-account setup doesn't support.
+		status, err := api.Verify(ctx)
+		if err != nil {
+			t.Fatalf("Verify: %v", err)
+		}
+		if !status.IsSignedIn {
+			t.Error("IsSignedIn = false; the test account session is not authenticated")
+		}
+	})
 
 	t.Run("MyFavoriteLists/has-content", func(t *testing.T) {
 		lists, err := api.MyFavoriteLists(ctx)

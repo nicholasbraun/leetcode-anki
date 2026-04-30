@@ -44,6 +44,7 @@ func twoSumFixture() contracttest.Fixture {
 func seedFake(fx contracttest.Fixture) *leetcodefake.Fake {
 	const fakeListSlug = "fake-favorites"
 	return &leetcodefake.Fake{
+		UserStatus: leetcode.UserStatus{IsSignedIn: true},
 		Lists: []leetcode.FavoriteList{
 			{Slug: fakeListSlug, Name: "Favorite Questions", QuestionCount: 1},
 		},

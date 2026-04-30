@@ -21,6 +21,11 @@ type Fake struct {
 	Submissions   map[string][]leetcode.Submission   // by problem title slug
 	Progress      []leetcode.ProgressQuestion
 	ProgressTotal int
+	// UserStatus is what Verify returns by default. The zero value is
+	// {IsSignedIn: false} which Verify reports as a signed-out error —
+	// tests that exercise the success path should seed at least
+	// {IsSignedIn: true}.
+	UserStatus leetcode.UserStatus
 
 	RunResult    *leetcode.RunResult
 	SubmitResult *leetcode.SubmitResult
@@ -34,6 +39,7 @@ type Fake struct {
 	RunHook            func(ctx context.Context, slug, lang, qid, code, in, meta string) (*leetcode.RunResult, error)
 	SubmitHook         func(ctx context.Context, slug, lang, qid, code string) (*leetcode.SubmitResult, error)
 	UpdateNoteHook     func(ctx context.Context, submissionID, note string, tagIDs []int, flagType string) error
+	VerifyHook         func(ctx context.Context) (leetcode.UserStatus, error)
 
 	// DetailCalls records the slugs ProblemDetail was invoked with, in
 	// order. Tests inspect and reset it directly (matching the prior
@@ -109,4 +115,14 @@ func (f *Fake) UpdateSubmissionNote(ctx context.Context, submissionID, note stri
 		return f.UpdateNoteHook(ctx, submissionID, note, tagIDs, flagType)
 	}
 	return f.NoteErr
+}
+
+func (f *Fake) Verify(ctx context.Context) (leetcode.UserStatus, error) {
+	if f.VerifyHook != nil {
+		return f.VerifyHook(ctx)
+	}
+	if !f.UserStatus.IsSignedIn {
+		return leetcode.UserStatus{}, errors.New("fake verify: not signed in")
+	}
+	return f.UserStatus, nil
 }
