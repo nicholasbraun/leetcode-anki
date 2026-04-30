@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -333,5 +334,278 @@ func TestPreview_StatusErrorPropagates(t *testing.T) {
 		if !p.IsZero() {
 			t.Errorf("rating %d: expected zero time on error, got %v", i+1, p)
 		}
+	}
+}
+
+// sessionFixture wires a reviews against a UserProgress payload covering
+// the four classes of slug Session has to handle: AC+due, AC+not-due,
+// attempted-but-failed, and never-attempted (absent from UserProgress).
+// Returns the prepared reviews and the timestamp every test should pass
+// as `now`.
+func sessionFixture(t *testing.T) (*reviews, time.Time) {
+	t.Helper()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fc := &fakeClient{progressResp: []leetcode.ProgressQuestion{
+		{TitleSlug: "due-a", Title: "Due A", FrontendID: "1", Difficulty: "EASY", LastAccepted: true},
+		{TitleSlug: "due-b", Title: "Due B", FrontendID: "2", Difficulty: "EASY", LastAccepted: true},
+		{TitleSlug: "due-c", Title: "Due C", FrontendID: "3", Difficulty: "MEDIUM", LastAccepted: true},
+		{TitleSlug: "fresh-ac", Title: "Fresh AC", FrontendID: "4", Difficulty: "EASY", LastAccepted: true},
+		{TitleSlug: "failed", Title: "Failed", FrontendID: "5", Difficulty: "HARD", LastAccepted: false},
+	}}
+	r := newTestReviews(t, fc)
+	// AC+due: first Submit was 2 days ago → SM-2 first interval is 1 day → due now.
+	for _, slug := range []string{"due-a", "due-b", "due-c"} {
+		r.cache.Slugs[slug] = slugEntry{Submissions: []cachedSubmission{
+			{ID: slug, OccurredAt: at.AddDate(0, 0, -2), Accepted: true},
+		}}
+	}
+	// AC+not-due: first Submit was just now → 1-day interval → not due.
+	r.cache.Slugs["fresh-ac"] = slugEntry{Submissions: []cachedSubmission{
+		{ID: "fresh-ac", OccurredAt: at, Accepted: true},
+	}}
+	return r, at
+}
+
+// Session must put every due item before every new item so the queue
+// renders "what's overdue first, then a few new ones" — the user-facing
+// promise of Review Mode.
+func TestSession_DueItemsBeforeNewItems(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs: []string{"failed", "due-a", "newbie", "due-b"},
+		// "newbie" isn't in UserProgress: never-attempted.
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(sess.Items) != 4 {
+		t.Fatalf("expected 4 items, got %d: %+v", len(sess.Items), sess.Items)
+	}
+	for i := 0; i < 2; i++ {
+		if sess.Items[i].Kind != KindDue {
+			t.Errorf("Items[%d].Kind = %v, want KindDue", i, sess.Items[i].Kind)
+		}
+	}
+	for i := 2; i < 4; i++ {
+		if sess.Items[i].Kind != KindNew {
+			t.Errorf("Items[%d].Kind = %v, want KindNew", i, sess.Items[i].Kind)
+		}
+	}
+}
+
+// Slugs ordering is load-bearing: callers (TUI) pass slugs in display
+// order and rely on Session to preserve that order within each bucket.
+func TestSession_PreservesSlugsOrderWithinBuckets(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"due-c", "failed", "due-a", "newbie", "due-b"},
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	want := []string{"due-c", "due-a", "due-b", "failed", "newbie"}
+	got := make([]string, len(sess.Items))
+	for i, it := range sess.Items {
+		got[i] = it.TitleSlug
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("slug order = %v, want %v", got, want)
+	}
+}
+
+// MaxDue caps how many KindDue items appear in the queue; DueTotal must
+// still report the uncapped count so the TUI footer can render "2 of 5 due".
+func TestSession_DueBucketCappedTotalsUncapped(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"due-a", "due-b", "due-c"},
+		MaxDue: 2, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if sess.DueCount != 2 {
+		t.Errorf("DueCount = %d, want 2", sess.DueCount)
+	}
+	if sess.DueTotal != 3 {
+		t.Errorf("DueTotal = %d, want 3 (uncapped)", sess.DueTotal)
+	}
+	if len(sess.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(sess.Items))
+	}
+}
+
+// Symmetric to the due-cap test: MaxNew caps KindNew, NewTotal stays uncapped.
+func TestSession_NewBucketCappedTotalsUncapped(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"failed", "newbie-1", "newbie-2", "newbie-3"},
+		MaxDue: 5, MaxNew: 1,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if sess.NewCount != 1 {
+		t.Errorf("NewCount = %d, want 1", sess.NewCount)
+	}
+	if sess.NewTotal != 4 {
+		t.Errorf("NewTotal = %d, want 4 (uncapped)", sess.NewTotal)
+	}
+	if sess.Items[0].TitleSlug != "failed" {
+		t.Errorf("first new = %q, want %q (preserves Slugs order)", sess.Items[0].TitleSlug, "failed")
+	}
+}
+
+// MaxDue=0 is the supported way to ask for new-only — the queue must
+// drop the due bucket entirely (not emit a single placeholder).
+func TestSession_MaxDueZeroOmitsDueBucket(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"due-a", "failed"},
+		MaxDue: 0, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if sess.DueCount != 0 {
+		t.Errorf("DueCount = %d, want 0", sess.DueCount)
+	}
+	if sess.DueTotal != 1 {
+		t.Errorf("DueTotal = %d, want 1 (still counted)", sess.DueTotal)
+	}
+	if len(sess.Items) != 1 || sess.Items[0].Kind != KindNew {
+		t.Errorf("Items = %+v, want one KindNew", sess.Items)
+	}
+}
+
+// MaxNew=0 mirrors the old Due()-shaped behavior — only due Items returned.
+func TestSession_MaxNewZeroOmitsNewBucket(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"due-a", "failed", "newbie"},
+		MaxDue: 5, MaxNew: 0,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if sess.NewCount != 0 {
+		t.Errorf("NewCount = %d, want 0", sess.NewCount)
+	}
+	if sess.NewTotal != 2 {
+		t.Errorf("NewTotal = %d, want 2 (still counted)", sess.NewTotal)
+	}
+	if len(sess.Items) != 1 || sess.Items[0].Kind != KindDue {
+		t.Errorf("Items = %+v, want one KindDue", sess.Items)
+	}
+}
+
+// A slug that's never appeared in UserProgress is treated as new — it's
+// the never-attempted case (no LeetCode submission history at all).
+func TestSession_UnknownSlugTreatedAsNew(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"completely-unknown"},
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(sess.Items) != 1 || sess.Items[0].Kind != KindNew {
+		t.Fatalf("expected one KindNew item, got %+v", sess.Items)
+	}
+	if sess.Items[0].TitleSlug != "completely-unknown" {
+		t.Errorf("TitleSlug = %q, want %q", sess.Items[0].TitleSlug, "completely-unknown")
+	}
+}
+
+// AC+not-due Problems are review-rotation members but Status.Due == false:
+// they belong in neither bucket. Otherwise Review Mode would surface
+// Problems the user just successfully reviewed yesterday.
+func TestSession_AcceptedButNotDueExcludedFromBothBuckets(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"fresh-ac"},
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(sess.Items) != 0 {
+		t.Errorf("expected no items, got %+v", sess.Items)
+	}
+	if sess.DueTotal != 0 || sess.NewTotal != 0 {
+		t.Errorf("Totals = (%d due, %d new), want both 0", sess.DueTotal, sess.NewTotal)
+	}
+}
+
+// Due Items must carry NextDue and Reviews so the TUI can render
+// "due 3d ago" badges without re-calling Status.
+func TestSession_DueItemsCarryScheduleMetadata(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"due-a"},
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(sess.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(sess.Items))
+	}
+	it := sess.Items[0]
+	if it.NextDue.IsZero() {
+		t.Error("KindDue NextDue must be set")
+	}
+	if it.Reviews != 1 {
+		t.Errorf("Reviews = %d, want 1", it.Reviews)
+	}
+	if it.Title != "Due A" || it.FrontendID != "1" || it.Difficulty != "EASY" {
+		t.Errorf("missing display metadata from UserProgress: %+v", it)
+	}
+}
+
+// New Items have no schedule (zero NextDue, zero Reviews). Display
+// metadata still comes through when UserProgress has the slug (the
+// attempted-but-failed case); never-attempted slugs come back with
+// only TitleSlug populated.
+func TestSession_NewItemsZeroSchedule(t *testing.T) {
+	r, now := sessionFixture(t)
+
+	sess, err := r.Session(context.Background(), SessionConfig{
+		Slugs:  []string{"failed", "completely-unknown"},
+		MaxDue: 5, MaxNew: 5,
+	}, now)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(sess.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(sess.Items))
+	}
+	for _, it := range sess.Items {
+		if !it.NextDue.IsZero() {
+			t.Errorf("KindNew %q: NextDue = %v, want zero", it.TitleSlug, it.NextDue)
+		}
+		if it.Reviews != 0 {
+			t.Errorf("KindNew %q: Reviews = %d, want 0", it.TitleSlug, it.Reviews)
+		}
+	}
+	// "failed" is in UserProgress so its display metadata is filled.
+	if sess.Items[0].Title != "Failed" || sess.Items[0].FrontendID != "5" {
+		t.Errorf("attempted-but-failed should carry UserProgress metadata: %+v", sess.Items[0])
+	}
+	// "completely-unknown" has no UserProgress row — only TitleSlug.
+	if sess.Items[1].Title != "" || sess.Items[1].FrontendID != "" {
+		t.Errorf("never-attempted should have empty metadata: %+v", sess.Items[1])
 	}
 }

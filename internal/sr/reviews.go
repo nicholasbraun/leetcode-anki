@@ -29,11 +29,22 @@ type Reviews interface {
 	// the problems screen in Review Mode (see Status.Due).
 	Status(ctx context.Context, slug string, now time.Time) (Status, error)
 
-	// Due returns every Problem currently due for review at `now`,
-	// sourced from the global UserProgress candidate set. This is the
-	// Review Mode entry point — the TUI calls it when the user presses
-	// the Review key on the lists screen.
+	// Due returns every globally-due Problem at `now`, sourced from the
+	// full UserProgress candidate set. This is the non-list-scoped entry
+	// point — used for cross-list affordances like a "you have N due"
+	// badge on the lists screen. For Review Mode (one Problem List at a
+	// time), use Session instead.
 	Due(ctx context.Context, now time.Time) ([]DueProblem, error)
+
+	// Session builds the ordered Review Mode queue for one Problem List.
+	// Caller passes the list's slugs in display order; SR cross-references
+	// them against UserProgress + the cache and returns a queue ready to
+	// render. Items are ordered: every KindDue Item first (preserving
+	// Slugs order), then every KindNew Item (also preserving Slugs order).
+	// Each bucket is independently capped by cfg.MaxDue / cfg.MaxNew;
+	// Session.DueTotal / NewTotal report the uncapped counts so callers
+	// can render "2 of 7 due" footers.
+	Session(ctx context.Context, cfg SessionConfig, now time.Time) (Session, error)
 
 	// Preview forecasts the next-due time for each candidate rating
 	// (index 0..3 = ratings 1..4 / Again/Hard/Good/Easy) if the user
@@ -59,6 +70,50 @@ type Status struct {
 	NextDue time.Time // zero when !Tracked
 	Reviews int       // count of reviews folded into the schedule
 }
+
+// SessionConfig parameterizes a Review Mode queue: the candidate slugs
+// (in display order), and how many of each kind to include.
+type SessionConfig struct {
+	Slugs  []string // current Problem List's slugs, in list order
+	MaxDue int      // 0 => omit the due bucket entirely
+	MaxNew int      // 0 => omit the new bucket entirely
+}
+
+// Session is the prepared Review Mode queue for one Problem List.
+// Items is the ordered queue (all KindDue first, then all KindNew);
+// the *Total fields are the pre-cap counts for footer / progress text.
+type Session struct {
+	Items    []SessionItem
+	DueCount int // post-cap count of KindDue Items
+	NewCount int // post-cap count of KindNew Items
+	DueTotal int // uncapped count of due-in-list — Items capped at MaxDue
+	NewTotal int // uncapped count of new-in-list — Items capped at MaxNew
+}
+
+// SessionItem is one entry in the Review Mode queue. NextDue and Reviews
+// are zero for KindNew. Title/FrontendID/Difficulty are populated when
+// UserProgress carries the slug; never-attempted slugs come back with
+// only TitleSlug, and the caller is expected to fill display metadata
+// from its own list data.
+type SessionItem struct {
+	Kind       SessionKind
+	TitleSlug  string
+	Title      string
+	FrontendID string
+	Difficulty string
+	NextDue    time.Time
+	Reviews    int
+}
+
+// SessionKind tags each Item as either an overdue Review (KindDue) or
+// a candidate the user has never AC'd yet (KindNew). Iota starts at 1
+// so the zero value is an invalid sentinel — catches unset bugs.
+type SessionKind int
+
+const (
+	KindDue SessionKind = iota + 1
+	KindNew
+)
 
 // Due reports whether a Problem is due for review at `now`. False for
 // Problems that aren't yet tracked (no Accepted submission).
@@ -147,23 +202,13 @@ func (r *reviews) Status(ctx context.Context, slug string, now time.Time) (Statu
 // NextDue is at or before `now`. May make many API calls on a cold cache;
 // subsequent calls hit cache.
 func (r *reviews) Due(ctx context.Context, now time.Time) ([]DueProblem, error) {
-	const limit = 50
-	var allProgress []leetcode.ProgressQuestion
-	skip := 0
-	for {
-		page, total, err := r.lc.UserProgress(ctx, skip, limit)
-		if err != nil {
-			return nil, err
-		}
-		allProgress = append(allProgress, page...)
-		skip += len(page)
-		if len(page) == 0 || skip >= total {
-			break
-		}
+	progress, err := r.allProgress(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	out := make([]DueProblem, 0, len(allProgress))
-	for _, p := range allProgress {
+	out := make([]DueProblem, 0, len(progress))
+	for _, p := range progress {
 		if !p.LastAccepted {
 			continue
 		}
@@ -184,6 +229,90 @@ func (r *reviews) Due(ctx context.Context, now time.Time) ([]DueProblem, error) 
 		})
 	}
 	return out, nil
+}
+
+// Session pages UserProgress once to classify cfg.Slugs into AC vs not-AC,
+// then walks Slugs in order. AC slugs are passed to Status to determine
+// due-ness; non-AC and unknown-to-UserProgress slugs are KindNew. Each
+// bucket's Total is incremented even when MaxDue/MaxNew are zero so the
+// caller can render footer text against the uncapped truth.
+func (r *reviews) Session(ctx context.Context, cfg SessionConfig, now time.Time) (Session, error) {
+	progress, err := r.allProgress(ctx)
+	if err != nil {
+		return Session{}, err
+	}
+	bySlug := make(map[string]leetcode.ProgressQuestion, len(progress))
+	for _, p := range progress {
+		bySlug[p.TitleSlug] = p
+	}
+
+	var sess Session
+	dueItems := make([]SessionItem, 0, cfg.MaxDue)
+	newItems := make([]SessionItem, 0, cfg.MaxNew)
+
+	for _, slug := range cfg.Slugs {
+		p, hasProgress := bySlug[slug]
+
+		if hasProgress && p.LastAccepted {
+			st, err := r.Status(ctx, slug, now)
+			if err != nil {
+				continue // skip the slug; don't fail the whole Session
+			}
+			if !st.Due(now) {
+				continue
+			}
+			sess.DueTotal++
+			if len(dueItems) < cfg.MaxDue {
+				dueItems = append(dueItems, SessionItem{
+					Kind:       KindDue,
+					TitleSlug:  slug,
+					Title:      p.Title,
+					FrontendID: p.FrontendID,
+					Difficulty: p.Difficulty,
+					NextDue:    st.NextDue,
+					Reviews:    st.Reviews,
+				})
+			}
+			continue
+		}
+
+		sess.NewTotal++
+		if len(newItems) < cfg.MaxNew {
+			it := SessionItem{Kind: KindNew, TitleSlug: slug}
+			if hasProgress {
+				it.Title = p.Title
+				it.FrontendID = p.FrontendID
+				it.Difficulty = p.Difficulty
+			}
+			newItems = append(newItems, it)
+		}
+	}
+
+	sess.DueCount = len(dueItems)
+	sess.NewCount = len(newItems)
+	sess.Items = append(dueItems, newItems...)
+	return sess, nil
+}
+
+// allProgress drains the paginated UserProgress endpoint into one slice.
+// Used by both Due and Session — a single helper keeps pagination logic
+// in one place.
+func (r *reviews) allProgress(ctx context.Context) ([]leetcode.ProgressQuestion, error) {
+	const limit = 50
+	var all []leetcode.ProgressQuestion
+	skip := 0
+	for {
+		page, total, err := r.lc.UserProgress(ctx, skip, limit)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		skip += len(page)
+		if len(page) == 0 || skip >= total {
+			break
+		}
+	}
+	return all, nil
 }
 
 // Preview runs the scheduler against the cached history plus a synthetic
