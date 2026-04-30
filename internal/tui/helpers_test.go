@@ -192,6 +192,11 @@ type fakeReviews struct {
 	// an empty queue and the same shared `err`.
 	sessionResp sr.Session
 
+	// sessionCalls records the SessionConfig of each Session invocation so
+	// tests can assert what the TUI passed (e.g. that premium slugs were
+	// filtered out before SR was called).
+	sessionCalls []sr.SessionConfig
+
 	// previewResp is what Preview returns. previewErr only fires when set;
 	// otherwise Preview returns previewResp with err == nil so the rating
 	// modal can stage canned dates without piggybacking on the shared `err`.
@@ -229,9 +234,10 @@ func (f *fakeReviews) Due(_ context.Context, _ time.Time) ([]sr.DueProblem, erro
 	return f.dueResp, f.err
 }
 
-func (f *fakeReviews) Session(_ context.Context, _ sr.SessionConfig, _ time.Time) (sr.Session, error) {
+func (f *fakeReviews) Session(_ context.Context, cfg sr.SessionConfig, _ time.Time) (sr.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.sessionCalls = append(f.sessionCalls, cfg)
 	return f.sessionResp, f.err
 }
 

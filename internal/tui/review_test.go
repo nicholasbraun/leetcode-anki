@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -252,7 +253,7 @@ func TestLoadProblemsCmd_PopulatesSession_WhenReviewMode(t *testing.T) {
 		DueCount: 1, NewCount: 1, DueTotal: 1, NewTotal: 1,
 	}
 
-	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, 5, 5, fr)
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, 5, 5, true, fr)
 	msg := cmd()
 	loaded, ok := msg.(problemsLoadedMsg)
 	if !ok {
@@ -272,6 +273,66 @@ func TestLoadProblemsCmd_PopulatesSession_WhenReviewMode(t *testing.T) {
 	}
 }
 
+// Free users (userIsPremium == false) must not get premium Problems in
+// the Review Mode queue — they can't open them, so recommending them
+// is a dead end. The TUI strips PaidOnly slugs before the slice reaches
+// SR; SR stays premium-ignorant.
+func TestLoadProblemsCmd_FreeUserSkipsPaidSlugs(t *testing.T) {
+	ac := "AC"
+	tried := "TRIED"
+	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
+		"x": {
+			{TitleSlug: "free-1", Status: &ac},
+			{TitleSlug: "premium-1", Status: &tried, PaidOnly: true},
+			{TitleSlug: "free-2"},
+			{TitleSlug: "premium-2", PaidOnly: true},
+		},
+	}}
+	fr := newFakeReviews()
+
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, 5, 5, false, fr)
+	if msg := cmd(); msg == nil {
+		t.Fatal("nil msg")
+	}
+
+	if len(fr.sessionCalls) != 1 {
+		t.Fatalf("expected 1 Session call, got %d", len(fr.sessionCalls))
+	}
+	got := fr.sessionCalls[0].Slugs
+	want := []string{"free-1", "free-2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Session slugs = %v, want %v (premium slugs must be filtered for free users)", got, want)
+	}
+}
+
+// Premium users see premium recommendations — the filter is conditional,
+// not unconditional. A premium subscriber can open paid Problems, so SR
+// gets the full slug list.
+func TestLoadProblemsCmd_PremiumUserKeepsPaidSlugs(t *testing.T) {
+	ac := "AC"
+	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
+		"x": {
+			{TitleSlug: "free-1", Status: &ac},
+			{TitleSlug: "premium-1", PaidOnly: true},
+		},
+	}}
+	fr := newFakeReviews()
+
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, 5, 5, true, fr)
+	if msg := cmd(); msg == nil {
+		t.Fatal("nil msg")
+	}
+
+	if len(fr.sessionCalls) != 1 {
+		t.Fatalf("expected 1 Session call, got %d", len(fr.sessionCalls))
+	}
+	got := fr.sessionCalls[0].Slugs
+	want := []string{"free-1", "premium-1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Session slugs = %v, want %v (premium users see all slugs)", got, want)
+	}
+}
+
 // loadProblemsCmd leaves session nil when reviewMode is false — no SR
 // call at all, so Explore-Mode users don't pay for the SR fan-out.
 func TestLoadProblemsCmd_NilSession_WhenExploreMode(t *testing.T) {
@@ -281,7 +342,7 @@ func TestLoadProblemsCmd_NilSession_WhenExploreMode(t *testing.T) {
 	}}
 	fr := newFakeReviews()
 
-	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", false, 5, 5, fr)
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", false, 5, 5, false, fr)
 	msg := cmd()
 	loaded, ok := msg.(problemsLoadedMsg)
 	if !ok {

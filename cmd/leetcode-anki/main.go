@@ -57,9 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_ = status // consumed by tui.Run in the follow-up commit that wires IsPremium into the Review-Mode filter
-
-	if err := tui.Run(ctx, client, cache, runner, reviews, *reviewDue, *reviewNew); err != nil {
+	if err := tui.Run(ctx, client, cache, runner, reviews, *reviewDue, *reviewNew, status.IsPremium); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)
 	}

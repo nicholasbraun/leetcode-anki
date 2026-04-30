@@ -84,6 +84,13 @@ type Model struct {
 	reviewDue int
 	reviewNew int
 
+	// userIsPremium reflects the LeetCode account's subscription. False
+	// is the safe default (zero value) — when set, loadProblemsCmd stops
+	// stripping PaidOnly Problems from the Review-Mode slug list. The
+	// flag flows from leetcode.Verify through tui.Run; tests set it
+	// directly on the Model when relevant.
+	userIsPremium bool
+
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
 	problem        problemView
@@ -427,11 +434,14 @@ func (m *Model) clearInflight() {
 // outbound HTTP requests; cancelling it (e.g. on SIGINT from the parent
 // process) will abort any in-flight run/submit. reviewDue / reviewNew
 // override the default Review Mode bucket caps; the caller is expected
-// to clamp negatives to zero before invoking.
-func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews, reviewDue, reviewNew int) error {
+// to clamp negatives to zero before invoking. userIsPremium is the
+// LeetCode account's subscription status — when false, paid Problems
+// are stripped from Review-Mode recommendations.
+func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews, reviewDue, reviewNew int, userIsPremium bool) error {
 	m := NewModel(ctx, client, cache, ed, reviews)
 	m.reviewDue = reviewDue
 	m.reviewNew = reviewNew
+	m.userIsPremium = userIsPremium
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	m.clearInflight()
@@ -484,9 +494,12 @@ func loadListsCmd(parent context.Context, c LeetcodeClient) tea.Cmd {
 
 // loadProblemsCmd fetches the list contents and, when reviewMode is true,
 // also computes the Review Mode queue in one round-trip via reviews.Session.
-// Session errors degrade to a nil queue so a single SR failure can't
-// collapse the screen — the user lands on the unfiltered list.
-func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string, reviewMode bool, dueLimit, newLimit int, reviews sr.Reviews) tea.Cmd {
+// Free users (userIsPremium == false) get PaidOnly Problems stripped from
+// the slug list before SR sees it, so the new bucket can't recommend
+// Problems they can't open. Session errors degrade to a nil queue so a
+// single SR failure can't collapse the screen — the user lands on the
+// unfiltered list.
+func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string, reviewMode bool, dueLimit, newLimit int, userIsPremium bool, reviews sr.Reviews) tea.Cmd {
 	return func() tea.Msg {
 		timeout := defaultTimeout
 		if reviewMode {
@@ -502,9 +515,12 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCac
 
 		var session *sr.Session
 		if reviewMode {
-			slugs := make([]string, len(res.Questions))
-			for i, q := range res.Questions {
-				slugs[i] = q.TitleSlug
+			slugs := make([]string, 0, len(res.Questions))
+			for _, q := range res.Questions {
+				if q.PaidOnly && !userIsPremium {
+					continue
+				}
+				slugs = append(slugs, q.TitleSlug)
 			}
 			s, err := reviews.Session(ctx, sr.SessionConfig{
 				Slugs:  slugs,

@@ -314,7 +314,7 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				// synchronously.
 				if m.reviewMode && m.session == nil {
 					m.err = nil
-					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviewDue, m.reviewNew, m.reviews))
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviewDue, m.reviewNew, m.userIsPremium, m.reviews))
 				}
 				rebuildProblemsList(m)
 				return m, syncPreviewCursor(m)

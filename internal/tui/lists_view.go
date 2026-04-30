@@ -94,7 +94,7 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				if it, ok := m.lists.SelectedItem().(listItem); ok {
 					m.currentList = it.fav
 					m.err = nil
-					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug, m.reviewMode, m.reviewDue, m.reviewNew, m.reviews))
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, it.fav.Slug, m.reviewMode, m.reviewDue, m.reviewNew, m.userIsPremium, m.reviews))
 				}
 			}
 		}
