@@ -77,7 +77,7 @@ func TestBack_FromProblems_PreservesReviewMode(t *testing.T) {
 	m.reviewMode = true
 	m.screen = screenProblems
 	m.problemsReady = true
-	m.problems = newProblemsList(140, 30, nil, "review", nil)
+	m.problems = newProblemsList(140, 30, nil, "review", nil, nil)
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 
@@ -110,7 +110,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	}
 	m.problemsReady = true
 	m.screen = screenProblems
-	m.problems = newProblemsList(140, 30, []Problem{m.problemsAll[0]}, "X", nil)
+	m.problems = newProblemsList(140, 30, []Problem{m.problemsAll[0]}, "X", nil, nil)
 
 	// Review → Explore: full list, no spinner, no re-fetch.
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
@@ -155,7 +155,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsSession(t *testing.T) {
 	m.session = nil
 	m.problemsReady = true
 	m.screen = screenProblems
-	m.problems = newProblemsList(140, 30, m.problemsAll, "X", nil)
+	m.problems = newProblemsList(140, 30, m.problemsAll, "X", nil, nil)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
 	if !m.reviewMode {
@@ -310,7 +310,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 	m.session = &sr.Session{} // computed but nothing due / no new
 	m.problemsReady = true
 	m.screen = screenProblems
-	m.problems = newProblemsList(140, 30, nil, "X", nil)
+	m.problems = newProblemsList(140, 30, nil, "X", nil, nil)
 
 	view := viewProblemsView(m)
 	if !strings.Contains(strings.ToLower(view), "nothing due") {
@@ -328,7 +328,7 @@ func TestReviewMode_BreadcrumbReflectsMode(t *testing.T) {
 	m.reviewMode = true
 	m.screen = screenProblems
 	m.problemsReady = true
-	m.problems = newProblemsList(140, 30, nil, "review", nil)
+	m.problems = newProblemsList(140, 30, nil, "review", nil, nil)
 
 	view := viewProblemsView(m)
 	if !strings.Contains(strings.ToLower(view), "review mode") {

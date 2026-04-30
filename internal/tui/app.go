@@ -198,7 +198,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.problemsAll = msg.problems
 		m.session = msg.session
 		visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
-		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
+		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs, sessionBadges(m.session, time.Now()))
 		m.problemsReady = true
 		m.problemIndex = 0
 		m.preview = previewState{}

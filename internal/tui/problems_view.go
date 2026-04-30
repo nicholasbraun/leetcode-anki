@@ -4,15 +4,22 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"leetcode-anki/internal/sr"
 )
 
 type problemItem struct {
 	q           Problem
 	hasSolution bool
+	// badge is the Review-Mode-only annotation rendered between title and
+	// difficulty: "new" for KindNew Items, "due Xd ago" for KindDue.
+	// Empty in Explore Mode and on rows that aren't part of the session.
+	badge string
 }
 
 func (p problemItem) FilterValue() string {
@@ -114,11 +121,20 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	title := titleStyleFn.Render(titleStr)
 
 	left := " " + cursor + statusCell + num + "  " + title
-	gap := width - lipgloss.Width(left) - diffW - 1
+
+	// Right-side block is "[badge  ]diff" (trailing 2-space spacer included
+	// when badge is set), so the difficulty's right edge stays anchored
+	// regardless of badge width.
+	right := diff
+	if it.badge != "" {
+		right = dimStyle.Render(it.badge) + "  " + diff
+	}
+	rightW := lipgloss.Width(right)
+	gap := width - lipgloss.Width(left) - rightW - 1
 	if gap < 2 {
 		gap = 2
 	}
-	fmt.Fprint(w, left+strings.Repeat(" ", gap)+diff)
+	fmt.Fprint(w, left+strings.Repeat(" ", gap)+right)
 }
 
 // reviewFooterHint returns the verb that completes the 'v' footer entry,
@@ -146,13 +162,13 @@ func rebuildProblemsList(m *Model) {
 	}
 	lw, lh, _, _ := problemsLayout(w, h)
 	visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
-	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
+	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs, sessionBadges(m.session, time.Now()))
 }
 
-func newProblemsList(width, height int, qs []Problem, listName string, solutions map[string]bool) list.Model {
+func newProblemsList(width, height int, qs []Problem, listName string, solutions map[string]bool, badges map[string]string) list.Model {
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
-		items[i] = problemItem{q: q, hasSolution: solutions[q.TitleSlug]}
+		items[i] = problemItem{q: q, hasSolution: solutions[q.TitleSlug], badge: badges[q.TitleSlug]}
 	}
 	l := list.New(items, problemsDelegate{}, width, height)
 	l.SetShowTitle(false)
@@ -160,6 +176,51 @@ func newProblemsList(width, height int, qs []Problem, listName string, solutions
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
 	return l
+}
+
+// sessionBadges builds the slug → badge-text map for a Review Mode
+// session. Returns nil for a nil session so callers can pass the result
+// straight through to newProblemsList without an empty-map allocation
+// per render. now is captured by the caller and used for "Xd ago"
+// formatting; using a snapshot keeps badges stable while the user works
+// through a session rather than ticking second-by-second.
+func sessionBadges(session *sr.Session, now time.Time) map[string]string {
+	if session == nil {
+		return nil
+	}
+	out := make(map[string]string, len(session.Items))
+	for _, it := range session.Items {
+		switch it.Kind {
+		case sr.KindNew:
+			out[it.TitleSlug] = "new"
+		case sr.KindDue:
+			out[it.TitleSlug] = humanizeOverdue(it.NextDue, now)
+		}
+	}
+	return out
+}
+
+// humanizeOverdue formats how far in the past a SessionItem's NextDue
+// is from now. Inverse of humanizeDue (result_view.go), with shorter
+// unit suffixes that fit a per-row badge column.
+func humanizeOverdue(nextDue, now time.Time) string {
+	d := now.Sub(nextDue)
+	switch {
+	case d < time.Hour:
+		mins := int(d.Minutes())
+		if mins < 1 {
+			return "due now"
+		}
+		return fmt.Sprintf("due %dm ago", mins)
+	case d < 24*time.Hour:
+		return fmt.Sprintf("due %dh ago", int(d.Hours()))
+	case d < 14*24*time.Hour:
+		return fmt.Sprintf("due %dd ago", int(d.Hours())/24)
+	case d < 60*24*time.Hour:
+		return fmt.Sprintf("due %dw ago", int(d.Hours())/(24*7))
+	default:
+		return fmt.Sprintf("due %dmo ago", int(d.Hours())/(24*30))
+	}
 }
 
 func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {

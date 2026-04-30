@@ -126,7 +126,7 @@ func advanceToNextDue(m *Model, ratedSlug string) tea.Cmd {
 	visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
 	if m.problemsReady {
 		lw, lh, _, _ := problemsLayout(m.width, m.height)
-		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
+		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs, sessionBadges(m.session, time.Now()))
 		m.problemIndex = 0
 	}
 	if len(visible) == 0 {

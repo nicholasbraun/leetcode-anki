@@ -4,12 +4,14 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/leetcode/leetcodefake"
+	"leetcode-anki/internal/sr"
 )
 
 func loadFakeProblems(t *testing.T, m *Model, qs []Problem) {
@@ -221,6 +223,107 @@ func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	}
 }
 
+// humanizeOverdue formats the gap between an SR NextDue (in the past)
+// and now. The boundary cases — sub-hour, sub-day, sub-week, sub-month —
+// must each render a distinct unit so the badge is informative without
+// being noisy.
+func TestHumanizeOverdue(t *testing.T) {
+	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name    string
+		nextDue time.Time
+		want    string
+	}{
+		{"just due", now, "due now"},
+		{"40 minutes overdue", now.Add(-40 * time.Minute), "due 40m ago"},
+		{"3 hours overdue", now.Add(-3 * time.Hour), "due 3h ago"},
+		{"2 days overdue", now.AddDate(0, 0, -2), "due 2d ago"},
+		{"3 weeks overdue", now.AddDate(0, 0, -21), "due 3w ago"},
+		{"6 months overdue", now.AddDate(0, -6, 0), "due 6mo ago"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := humanizeOverdue(tc.nextDue, now); got != tc.want {
+				t.Errorf("humanizeOverdue(%v, %v) = %q, want %q", tc.nextDue, now, got, tc.want)
+			}
+		})
+	}
+}
+
+// sessionBadges extracts the per-row badge text the TUI renders in
+// Review Mode: KindNew → "new", KindDue → humanizeOverdue. Pure mapping.
+func TestSessionBadges(t *testing.T) {
+	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
+	session := &sr.Session{
+		Items: []sr.SessionItem{
+			{Kind: sr.KindDue, TitleSlug: "due-3d", NextDue: now.AddDate(0, 0, -3)},
+			{Kind: sr.KindNew, TitleSlug: "newbie"},
+		},
+	}
+	got := sessionBadges(session, now)
+	if got["due-3d"] != "due 3d ago" {
+		t.Errorf("due slug badge = %q, want %q", got["due-3d"], "due 3d ago")
+	}
+	if got["newbie"] != "new" {
+		t.Errorf("new slug badge = %q, want %q", got["newbie"], "new")
+	}
+}
+
+// sessionBadges with a nil session must return a nil map so the caller
+// can pass it straight through to newProblemsList's badges param without
+// allocating a useless empty map per render.
+func TestSessionBadges_NilSession(t *testing.T) {
+	if got := sessionBadges(nil, time.Now()); got != nil {
+		t.Errorf("nil session must return nil map, got %v", got)
+	}
+}
+
+// In Review Mode, each row carries its kind-specific badge: "new" for
+// never-AC'd Problems, "due Xd ago" for overdue Reviews. Verify by
+// rendering rows directly through the delegate so the test doesn't
+// depend on the breadcrumb / footer chrome.
+func TestProblemRow_RendersReviewBadge(t *testing.T) {
+	const width = 80
+	qs := []Problem{
+		{QuestionFrontendID: "1", Title: "Two Sum", TitleSlug: "two-sum", Difficulty: "Easy"},
+		{QuestionFrontendID: "9", Title: "Palindrome Number", TitleSlug: "palindrome-number", Difficulty: "Easy"},
+	}
+	badges := map[string]string{
+		"two-sum":           "due 3d ago",
+		"palindrome-number": "new",
+	}
+	l := newProblemsList(width, 20, qs, "test", nil, badges)
+	d := problemsDelegate{}
+
+	var dueRow, newRow strings.Builder
+	d.Render(&dueRow, l, 0, l.Items()[0])
+	d.Render(&newRow, l, 1, l.Items()[1])
+
+	if !strings.Contains(dueRow.String(), "due 3d ago") {
+		t.Errorf("due row missing 'due 3d ago' badge, got: %q", dueRow.String())
+	}
+	if !strings.Contains(newRow.String(), "new") {
+		t.Errorf("new row missing 'new' badge, got: %q", newRow.String())
+	}
+}
+
+// In Explore Mode, badges are nil and the row renders identically to
+// the pre-Review-Mode layout — no leftover badge text.
+func TestProblemRow_NoBadgeWhenNotReviewMode(t *testing.T) {
+	const width = 80
+	qs := []Problem{
+		{QuestionFrontendID: "1", Title: "Two Sum", TitleSlug: "two-sum", Difficulty: "Easy"},
+	}
+	l := newProblemsList(width, 20, qs, "test", nil, nil)
+	var row strings.Builder
+	problemsDelegate{}.Render(&row, l, 0, l.Items()[0])
+
+	for _, fragment := range []string{"new", "due ", "ago"} {
+		if strings.Contains(row.String(), fragment) {
+			t.Errorf("Explore-Mode row leaked review-badge fragment %q: %s", fragment, row.String())
+		}
+	}
+}
+
 // TestProblemRowDifficultyRightAligned guards two row-render invariants:
 // the difficulty word's right edge stays on the same column whether or
 // not the title was truncated, and no difficulty icon (◔/◑/●) leaks back
@@ -232,7 +335,7 @@ func TestProblemRowDifficultyRightAligned(t *testing.T) {
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a", Difficulty: "Easy"},
 		{QuestionFrontendID: "424", Title: "Longest Repeating Character Replacement", TitleSlug: "lrcr", Difficulty: "Medium"},
 	}
-	l := newProblemsList(width, 20, qs, "test", nil)
+	l := newProblemsList(width, 20, qs, "test", nil, nil)
 	d := problemsDelegate{}
 
 	var short, long strings.Builder
