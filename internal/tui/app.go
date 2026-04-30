@@ -68,14 +68,21 @@ type Model struct {
 
 	// problemsAll is the unfiltered slice loaded for currentList. The
 	// problems list view derives its items from this, optionally filtered
-	// through dueSlugs, so 'v' can flip Review/Explore without re-fetching.
+	// through session, so 'v' can flip Review/Explore without re-fetching.
 	problemsAll []Problem
 
-	// dueSlugs is the set of slugs in problemsAll currently due for review.
-	// Populated by loadProblemsCmd when reviewMode is on at load time;
-	// nil when the load happened in Explore Mode (no SR work was done).
-	// Cleared whenever a different list is loaded.
-	dueSlugs map[string]bool
+	// session is the Review Mode queue for currentList: the ordered set of
+	// due-then-new SessionItems plus uncapped counts. Populated by
+	// loadProblemsCmd when reviewMode is on at load time; nil when the
+	// load happened in Explore Mode (no SR work was done). Cleared
+	// whenever a different list is loaded.
+	session *sr.Session
+
+	// reviewDue / reviewNew cap how many due Items and new Items appear
+	// in a Review Mode queue. Threaded through loadProblemsCmd into
+	// reviews.Session. Defaults set in NewModel; CLI flags override.
+	reviewDue int
+	reviewNew int
 
 	// Problem screen
 	currentProblem *leetcode.ProblemDetail
@@ -95,6 +102,8 @@ func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, e
 		screen:      screenLists,
 		load:        NewIndicator(),
 		previewLoad: NewIndicator(),
+		reviewDue:   defaultReviewDue,
+		reviewNew:   defaultReviewNew,
 	}
 }
 
@@ -187,8 +196,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.solutionSlugs = map[string]bool{}
 		}
 		m.problemsAll = msg.problems
-		m.dueSlugs = msg.dueSlugs
-		visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
+		m.session = msg.session
+		visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
 		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
 		m.problemsReady = true
 		m.problemIndex = 0
@@ -349,17 +358,21 @@ func keyMatch(m tea.KeyMsg, b key.Binding) bool {
 
 // visibleProblems is the projection from the unfiltered list to whatever
 // the problems screen should currently show. Explore Mode passes the
-// slice through; Review Mode keeps only Problems whose slug is in
-// dueSlugs. A nil dueSlugs in Review Mode means the load was made before
-// SR data was available — fall back to the full list rather than render
-// an empty pane.
-func visibleProblems(all []Problem, reviewMode bool, dueSlugs map[string]bool) []Problem {
-	if !reviewMode || dueSlugs == nil {
+// slice through; Review Mode walks session.Items so the visible order
+// matches the SR-determined "due first, then new" queue. A nil session
+// in Review Mode means the load was made before SR data was available —
+// fall back to the full list rather than render an empty pane.
+func visibleProblems(all []Problem, reviewMode bool, session *sr.Session) []Problem {
+	if !reviewMode || session == nil {
 		return all
 	}
-	out := make([]Problem, 0, len(dueSlugs))
+	bySlug := make(map[string]Problem, len(all))
 	for _, q := range all {
-		if dueSlugs[q.TitleSlug] {
+		bySlug[q.TitleSlug] = q
+	}
+	out := make([]Problem, 0, len(session.Items))
+	for _, it := range session.Items {
+		if q, ok := bySlug[it.TitleSlug]; ok {
 			out = append(out, q)
 		}
 	}
@@ -432,12 +445,11 @@ type listsLoadedMsg struct {
 type problemsLoadedMsg struct {
 	problems  []Problem
 	solutions map[string]bool
-	// dueSlugs is the set of currently-due slugs computed by loadProblemsCmd
-	// when reviewMode was on at load time. Nil when the load happened in
-	// Explore Mode (no SR fan-out). Used by the Update handler to filter
-	// the rendered list and retained on the model so 'v' toggles can
-	// re-render without re-fetching.
-	dueSlugs map[string]bool
+	// session is the Review Mode queue computed by loadProblemsCmd when
+	// reviewMode was on at load time. Nil when the load happened in
+	// Explore Mode (no SR fan-out). Retained on the Model so 'v' toggles
+	// can re-render without re-fetching.
+	session *sr.Session
 }
 
 type problemLoadedMsg struct {
@@ -467,12 +479,10 @@ func loadListsCmd(parent context.Context, c LeetcodeClient) tea.Cmd {
 }
 
 // loadProblemsCmd fetches the list contents and, when reviewMode is true,
-// also computes the set of due slugs in one round-trip. Non-AC slugs
-// short-circuit without an SR call so the fan-out is bounded to AC
-// Problems in this list. Per-slug Status errors are swallowed (the slug
-// is just omitted from dueSlugs) so a single SR failure can't collapse
-// the screen.
-func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string, reviewMode bool, reviews sr.Reviews) tea.Cmd {
+// also computes the Review Mode queue in one round-trip via reviews.Session.
+// Session errors degrade to a nil queue so a single SR failure can't
+// collapse the screen — the user lands on the unfiltered list.
+func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, slug string, reviewMode bool, dueLimit, newLimit int, reviews sr.Reviews) tea.Cmd {
 	return func() tea.Msg {
 		timeout := defaultTimeout
 		if reviewMode {
@@ -486,24 +496,22 @@ func loadProblemsCmd(parent context.Context, c LeetcodeClient, cache SolutionCac
 		}
 		solutions, _ := cache.SlugsWith()
 
-		var dueSlugs map[string]bool
+		var session *sr.Session
 		if reviewMode {
-			now := time.Now()
-			dueSlugs = map[string]bool{}
-			for _, q := range res.Questions {
-				if !isAccepted(q.Status) {
-					continue
-				}
-				st, err := reviews.Status(ctx, q.TitleSlug, now)
-				if err != nil {
-					continue
-				}
-				if st.Due(now) {
-					dueSlugs[q.TitleSlug] = true
-				}
+			slugs := make([]string, len(res.Questions))
+			for i, q := range res.Questions {
+				slugs[i] = q.TitleSlug
+			}
+			s, err := reviews.Session(ctx, sr.SessionConfig{
+				Slugs:  slugs,
+				MaxDue: dueLimit,
+				MaxNew: newLimit,
+			}, time.Now())
+			if err == nil {
+				session = &s
 			}
 		}
-		return problemsLoadedMsg{problems: res.Questions, solutions: solutions, dueSlugs: dueSlugs}
+		return problemsLoadedMsg{problems: res.Questions, solutions: solutions, session: session}
 	}
 }
 
@@ -573,4 +581,11 @@ const (
 	reviewTimeout       = 120 * time.Second
 	previewFetchTimeout = 15 * time.Second
 	previewDebounce     = 220 * time.Millisecond
+)
+
+// Defaults for Review Mode bucket caps. Override via --review-due /
+// --review-new flags (wired in cmd/leetcode-anki/main.go).
+const (
+	defaultReviewDue = 2
+	defaultReviewNew = 1
 )

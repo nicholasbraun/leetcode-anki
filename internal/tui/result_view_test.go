@@ -10,6 +10,7 @@ import (
 
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/leetcode/leetcodefake"
+	"leetcode-anki/internal/sr"
 )
 
 // modalSetup wires a Model into "user just submitted slug a, modal is open".
@@ -162,7 +163,13 @@ func TestRatingDigitRecordsAndAdvances(t *testing.T) {
 		t.Run(string(tc.key), func(t *testing.T) {
 			m, fr, _ := modalSetup(t)
 			m.reviewMode = true
-			m.dueSlugs = map[string]bool{"a": true, "b": true}
+			m.session = &sr.Session{
+				Items: []sr.SessionItem{
+					{Kind: sr.KindDue, TitleSlug: "a"},
+					{Kind: sr.KindDue, TitleSlug: "b"},
+				},
+				DueCount: 2, DueTotal: 2,
+			}
 			m.problemsAll = []Problem{
 				{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 				{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
@@ -281,7 +288,10 @@ func TestExploreModeAdvancesToProblemsList(t *testing.T) {
 func TestReviewModeNoMoreDueFallsBackToList(t *testing.T) {
 	m, fr, _ := modalSetup(t)
 	m.reviewMode = true
-	m.dueSlugs = map[string]bool{"a": true} // only the just-rated slug
+	m.session = &sr.Session{
+		Items:    []sr.SessionItem{{Kind: sr.KindDue, TitleSlug: "a"}},
+		DueCount: 1, DueTotal: 1,
+	} // only the just-rated slug remains in the queue
 	m.problemsAll = []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	}

@@ -132,7 +132,7 @@ func reviewFooterHint(reviewMode bool) string {
 }
 
 // rebuildProblemsList re-derives the problems list view from problemsAll
-// using the current reviewMode + dueSlugs. Used when 'v' toggles Review/
+// using the current reviewMode + session. Used when 'v' toggles Review/
 // Explore on the problems screen so the user sees the new filter
 // applied without losing their place.
 func rebuildProblemsList(m *Model) {
@@ -145,7 +145,7 @@ func rebuildProblemsList(m *Model) {
 		h = 24
 	}
 	lw, lh, _, _ := problemsLayout(w, h)
-	visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
+	visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
 	m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
 }
 
@@ -185,12 +185,13 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case keyMatch(km, keys.Review):
 				m.reviewMode = !m.reviewMode
-				// First Explore→Review for this list: dueSlugs hasn't been
-				// computed yet, so re-fire the load to fan out Status calls.
-				// Subsequent toggles use the cached dueSlugs synchronously.
-				if m.reviewMode && m.dueSlugs == nil {
+				// First Explore→Review for this list: the session hasn't
+				// been computed yet, so re-fire the load to fan out the
+				// SR call. Subsequent toggles use the cached session
+				// synchronously.
+				if m.reviewMode && m.session == nil {
 					m.err = nil
-					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviews))
+					return m, tea.Batch(m.load.Start(KindNeutral, "loading problems"), loadProblemsCmd(m.ctx, m.client, m.cache, m.currentList.Slug, true, m.reviewDue, m.reviewNew, m.reviews))
 				}
 				rebuildProblemsList(m)
 				return m, syncPreviewCursor(m)

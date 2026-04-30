@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -90,7 +89,7 @@ func TestBack_FromProblems_PreservesReviewMode(t *testing.T) {
 	}
 }
 
-// Toggling 'v' on the problems screen with dueSlugs already cached
+// Toggling 'v' on the problems screen with the session already cached
 // rebuilds the visible list synchronously — no re-fetch.
 func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	ac := "AC"
@@ -105,7 +104,10 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 		{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 		{TitleSlug: "c", Title: "C", QuestionFrontendID: "3", Status: &ac},
 	}
-	m.dueSlugs = map[string]bool{"a": true}
+	m.session = &sr.Session{
+		Items:    []sr.SessionItem{{Kind: sr.KindDue, TitleSlug: "a"}},
+		DueCount: 1, DueTotal: 1,
+	}
 	m.problemsReady = true
 	m.screen = screenProblems
 	m.problems = newProblemsList(140, 30, []Problem{m.problemsAll[0]}, "X", nil)
@@ -122,24 +124,24 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 		t.Errorf("expected 3 items after Explore toggle, got %d", got)
 	}
 
-	// Explore → Review: re-filter, still no spinner (dueSlugs cached).
+	// Explore → Review: re-filter, still no spinner (session cached).
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
 	if !m.reviewMode {
 		t.Error("'v' should toggle reviewMode back on")
 	}
 	if m.load.Active() {
-		t.Error("toggling Explore→Review with cached dueSlugs must not re-fetch")
+		t.Error("toggling Explore→Review with cached session must not re-fetch")
 	}
 	if got := len(m.problems.Items()); got != 1 {
 		t.Errorf("expected 1 item after Review toggle, got %d", got)
 	}
 }
 
-// Toggling into Review Mode on the problems screen when dueSlugs has
+// Toggling into Review Mode on the problems screen when the session has
 // never been computed for this list must fire loadProblemsCmd to fetch
 // it. Without this, a first-time toggle would render the full list and
 // silently fail to filter.
-func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
+func TestV_OnProblemsScreen_FromExplore_LoadsSession(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
@@ -150,7 +152,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = false
 	m.problemsAll = []Problem{{TitleSlug: "a", Status: &ac}}
-	m.dueSlugs = nil
+	m.session = nil
 	m.problemsReady = true
 	m.screen = screenProblems
 	m.problems = newProblemsList(140, 30, m.problemsAll, "X", nil)
@@ -160,16 +162,16 @@ func TestV_OnProblemsScreen_FromExplore_LoadsDueSlugs(t *testing.T) {
 		t.Error("'v' should switch into Review Mode")
 	}
 	if !m.load.Active() || m.load.kind != KindNeutral {
-		t.Errorf("first Explore→Review with no dueSlugs must trigger a load, got active=%v kind=%v", m.load.Active(), m.load.kind)
+		t.Errorf("first Explore→Review with no session must trigger a load, got active=%v kind=%v", m.load.Active(), m.load.kind)
 	}
 	if cmd == nil {
 		t.Error("expected loadProblemsCmd to be scheduled")
 	}
 }
 
-// In Review Mode, problemsLoadedMsg with a dueSlugs set must render only
-// the Problems that are present in dueSlugs.
-func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
+// In Review Mode, problemsLoadedMsg with a session must render only the
+// Problems referenced in session.Items, in session.Items order.
+func TestProblemsLoaded_FiltersToSessionWhenReviewMode(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
@@ -184,25 +186,33 @@ func TestProblemsLoaded_FiltersToDueWhenReviewMode(t *testing.T) {
 			{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 			{TitleSlug: "c", Title: "C", QuestionFrontendID: "3", Status: &ac},
 		},
-		dueSlugs: map[string]bool{"a": true, "c": true},
+		session: &sr.Session{
+			Items: []sr.SessionItem{
+				{Kind: sr.KindDue, TitleSlug: "c"},
+				{Kind: sr.KindNew, TitleSlug: "a"},
+			},
+			DueCount: 1, NewCount: 1, DueTotal: 1, NewTotal: 1,
+		},
 	})
 
 	if got := len(m.problems.Items()); got != 2 {
 		t.Fatalf("expected 2 visible items in review mode, got %d", got)
 	}
-	got := map[string]bool{}
-	for _, it := range m.problems.Items() {
-		got[it.(problemItem).q.TitleSlug] = true
-	}
-	if !got["a"] || !got["c"] || got["b"] {
-		t.Errorf("expected only {a,c} to be visible, got %v", got)
+	// session order is c then a — visibleProblems must preserve it so
+	// the rendered list reads "due first, then new" rather than the
+	// underlying Problem List's order.
+	want := []string{"c", "a"}
+	for i, it := range m.problems.Items() {
+		if got := it.(problemItem).q.TitleSlug; got != want[i] {
+			t.Errorf("Items[%d] = %q, want %q", i, got, want[i])
+		}
 	}
 	if len(m.problemsAll) != 3 {
 		t.Errorf("problemsAll should retain the unfiltered slice, got %d items", len(m.problemsAll))
 	}
 }
 
-// In Explore Mode, problemsLoadedMsg without dueSlugs renders the full list.
+// In Explore Mode, problemsLoadedMsg without a session renders the full list.
 func TestProblemsLoaded_NonReview_NoFilter(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
@@ -222,65 +232,63 @@ func TestProblemsLoaded_NonReview_NoFilter(t *testing.T) {
 	}
 }
 
-// loadProblemsCmd computes a dueSlugs map in the goroutine when reviewMode
-// is true: only AC slugs whose Status reports Due are included. Non-AC
-// slugs short-circuit without a Status call.
-func TestLoadProblemsCmd_ComputesDueSlugs_WhenReviewMode(t *testing.T) {
+// loadProblemsCmd calls reviews.Session in reviewMode and forwards the
+// returned queue on problemsLoadedMsg. The fake Session response stands
+// in for what *sr.reviews would compute against UserProgress + cache.
+func TestLoadProblemsCmd_PopulatesSession_WhenReviewMode(t *testing.T) {
 	ac := "AC"
-	tried := "TRIED"
-	now := time.Now()
-
 	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {
-			{TitleSlug: "a", Status: &ac},    // AC + due
-			{TitleSlug: "b", Status: &tried}, // not AC — skip
-			{TitleSlug: "c", Status: &ac},    // AC but not due
-			{TitleSlug: "d", Status: nil},    // unsolved
+			{TitleSlug: "a", Status: &ac},
+			{TitleSlug: "b", Status: &ac},
 		},
 	}}
 	fr := newFakeReviews()
-	fr.statusBySlug = map[string]sr.Status{
-		"a": {Tracked: true, NextDue: now.Add(-time.Hour)},
-		"c": {Tracked: true, NextDue: now.Add(time.Hour)},
+	fr.sessionResp = sr.Session{
+		Items: []sr.SessionItem{
+			{Kind: sr.KindDue, TitleSlug: "a"},
+			{Kind: sr.KindNew, TitleSlug: "b"},
+		},
+		DueCount: 1, NewCount: 1, DueTotal: 1, NewTotal: 1,
 	}
 
-	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, fr)
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", true, 5, 5, fr)
 	msg := cmd()
 	loaded, ok := msg.(problemsLoadedMsg)
 	if !ok {
 		t.Fatalf("expected problemsLoadedMsg, got %T", msg)
 	}
-	if len(loaded.problems) != 4 {
-		t.Errorf("expected all 4 problems to load (filter happens at render), got %d", len(loaded.problems))
+	if len(loaded.problems) != 2 {
+		t.Errorf("expected all 2 problems to load (filter happens at render), got %d", len(loaded.problems))
 	}
-	if !loaded.dueSlugs["a"] {
-		t.Error("a should be in dueSlugs (AC + due)")
+	if loaded.session == nil {
+		t.Fatal("expected session to be populated in reviewMode")
 	}
-	if loaded.dueSlugs["c"] {
-		t.Error("c should not be in dueSlugs (AC but not due)")
+	if len(loaded.session.Items) != 2 {
+		t.Errorf("expected 2 SessionItems, got %d", len(loaded.session.Items))
 	}
-	if loaded.dueSlugs["b"] || loaded.dueSlugs["d"] {
-		t.Error("non-AC slugs should never be in dueSlugs")
+	if loaded.session.Items[0].TitleSlug != "a" || loaded.session.Items[0].Kind != sr.KindDue {
+		t.Errorf("Items[0] = %+v, want due-a", loaded.session.Items[0])
 	}
 }
 
-// loadProblemsCmd returns nil dueSlugs when reviewMode is false — no SR
-// calls at all, so Explore-Mode users don't pay for the SR fan-out.
-func TestLoadProblemsCmd_NoDueSlugs_WhenExploreMode(t *testing.T) {
+// loadProblemsCmd leaves session nil when reviewMode is false — no SR
+// call at all, so Explore-Mode users don't pay for the SR fan-out.
+func TestLoadProblemsCmd_NilSession_WhenExploreMode(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{Questions: map[string][]Problem{
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
 
-	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", false, fr)
+	cmd := loadProblemsCmd(context.Background(), fc, newFakeCache(), "x", false, 5, 5, fr)
 	msg := cmd()
 	loaded, ok := msg.(problemsLoadedMsg)
 	if !ok {
 		t.Fatalf("expected problemsLoadedMsg, got %T", msg)
 	}
-	if loaded.dueSlugs != nil {
-		t.Errorf("dueSlugs should be nil in explore mode, got %v", loaded.dueSlugs)
+	if loaded.session != nil {
+		t.Errorf("session should be nil in explore mode, got %+v", loaded.session)
 	}
 }
 
@@ -299,7 +307,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 		{TitleSlug: "a", Title: "A", QuestionFrontendID: "1", Status: &ac},
 		{TitleSlug: "b", Title: "B", QuestionFrontendID: "2", Status: &ac},
 	}
-	m.dueSlugs = map[string]bool{} // computed but nothing due
+	m.session = &sr.Session{} // computed but nothing due / no new
 	m.problemsReady = true
 	m.screen = screenProblems
 	m.problems = newProblemsList(140, 30, nil, "X", nil)

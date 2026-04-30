@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"leetcode-anki/internal/leetcode"
+	"leetcode-anki/internal/sr"
 )
 
 type resultKind int
@@ -99,15 +100,30 @@ func commitGrade(m *Model, rating int) tea.Cmd {
 	return nil
 }
 
-// advanceToNextDue drops the just-rated slug from the Review-Mode due set,
-// rebuilds the problems list, and returns either a loadProblemCmd for the
-// next due slug or nil with the screen set to screenProblems when nothing
-// is left to review.
+// advanceToNextDue drops the just-rated slug from the Review-Mode session
+// queue, rebuilds the problems list, and returns either a loadProblemCmd
+// for the next queued slug or nil with the screen set to screenProblems
+// when nothing is left to review. *Total counts on the session are not
+// touched — they reflect what was queued at session start, so a "1 of 3
+// due" footer keeps a stable denominator as the user works through it.
 func advanceToNextDue(m *Model, ratedSlug string) tea.Cmd {
-	if m.dueSlugs != nil {
-		delete(m.dueSlugs, ratedSlug)
+	if m.session != nil {
+		filtered := m.session.Items[:0]
+		for _, it := range m.session.Items {
+			if it.TitleSlug == ratedSlug {
+				switch it.Kind {
+				case sr.KindDue:
+					m.session.DueCount--
+				case sr.KindNew:
+					m.session.NewCount--
+				}
+				continue
+			}
+			filtered = append(filtered, it)
+		}
+		m.session.Items = filtered
 	}
-	visible := visibleProblems(m.problemsAll, m.reviewMode, m.dueSlugs)
+	visible := visibleProblems(m.problemsAll, m.reviewMode, m.session)
 	if m.problemsReady {
 		lw, lh, _, _ := problemsLayout(m.width, m.height)
 		m.problems = newProblemsList(lw, lh, visible, m.currentList.Name, m.solutionSlugs)
