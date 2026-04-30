@@ -20,6 +20,13 @@ type problemItem struct {
 	// difficulty: "new" for KindNew Items, "due Xd ago" for KindDue.
 	// Empty in Explore Mode and on rows that aren't part of the session.
 	badge string
+	// badgeColW / diffColW are the widest badge/difficulty across the
+	// list, set once at construction. Render uses them to right-pad both
+	// columns so their right edges align. badgeColW == 0 means Explore
+	// Mode (no badge slot); the diff column then renders at its natural
+	// width, matching the pre-Review-Mode layout.
+	badgeColW int
+	diffColW  int
 }
 
 func (p problemItem) FilterValue() string {
@@ -94,7 +101,19 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 
 	num := fmt.Sprintf("%5s", it.q.QuestionFrontendID+".")
 	diff := difficultyLabel(it.q.Difficulty)
-	diffW := lipgloss.Width(diff)
+
+	// Right-side block. In Review Mode (badgeColW > 0) the badge and diff
+	// each get a fixed-width slot, right-padded with leading spaces so
+	// the columns line up across rows. In Explore Mode the badge slot
+	// collapses and diff renders at its natural width — same layout as
+	// before the badge column existed.
+	var right string
+	if it.badgeColW > 0 {
+		right = dimStyle.Render(leftPadToWidth(it.badge, it.badgeColW)) + "  " + leftPadToWidth(diff, it.diffColW)
+	} else {
+		right = diff
+	}
+	rightW := lipgloss.Width(right)
 
 	titleStr := it.q.Title
 	titleStyleFn := lipgloss.NewStyle()
@@ -103,12 +122,13 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 	}
 
 	// Available width for the title is whatever's left after the fixed
-	// columns, a 2-space minimum gap, and the 1-cell right margin the
-	// gap formula below reserves. Keeping these consistent ensures the
-	// difficulty's right edge lands on the same column whether or not
-	// the title was truncated.
+	// columns, the right-side block (badge + diff + spacer), a 2-space
+	// minimum gap, and the 1-cell right margin the gap formula below
+	// reserves. titleMax must include rightW (not just diff width),
+	// otherwise long badges push the row past the list width and the
+	// terminal wraps it.
 	leftConsumed := 1 + lipgloss.Width(cursor) + lipgloss.Width(statusCell) + lipgloss.Width(num) + 2
-	titleMax := width - leftConsumed - diffW - 3
+	titleMax := width - leftConsumed - rightW - 3
 	if titleMax < 8 {
 		titleMax = 8
 	}
@@ -122,14 +142,6 @@ func (d problemsDelegate) Render(w io.Writer, m list.Model, index int, item list
 
 	left := " " + cursor + statusCell + num + "  " + title
 
-	// Right-side block is "[badge  ]diff" (trailing 2-space spacer included
-	// when badge is set), so the difficulty's right edge stays anchored
-	// regardless of badge width.
-	right := diff
-	if it.badge != "" {
-		right = dimStyle.Render(it.badge) + "  " + diff
-	}
-	rightW := lipgloss.Width(right)
 	gap := width - lipgloss.Width(left) - rightW - 1
 	if gap < 2 {
 		gap = 2
@@ -166,9 +178,33 @@ func rebuildProblemsList(m *Model) {
 }
 
 func newProblemsList(width, height int, qs []Problem, listName string, solutions map[string]bool, badges map[string]string) list.Model {
+	// Pre-compute the slot widths once so each row's Render doesn't have
+	// to scan siblings. badgeColW > 0 only when there's at least one
+	// non-empty badge, which is the Review-Mode signal.
+	var badgeColW int
+	for _, b := range badges {
+		if w := lipgloss.Width(b); w > badgeColW {
+			badgeColW = w
+		}
+	}
+	var diffColW int
+	if badgeColW > 0 {
+		for _, q := range qs {
+			if w := lipgloss.Width(difficultyLabel(q.Difficulty)); w > diffColW {
+				diffColW = w
+			}
+		}
+	}
+
 	items := make([]list.Item, len(qs))
 	for i, q := range qs {
-		items[i] = problemItem{q: q, hasSolution: solutions[q.TitleSlug], badge: badges[q.TitleSlug]}
+		items[i] = problemItem{
+			q:           q,
+			hasSolution: solutions[q.TitleSlug],
+			badge:       badges[q.TitleSlug],
+			badgeColW:   badgeColW,
+			diffColW:    diffColW,
+		}
 	}
 	l := list.New(items, problemsDelegate{}, width, height)
 	l.SetShowTitle(false)
@@ -176,6 +212,18 @@ func newProblemsList(width, height int, qs []Problem, listName string, solutions
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
 	return l
+}
+
+// leftPadToWidth right-aligns s within a slot of n cells by prepending
+// spaces. Returns s unchanged when it already fills (or exceeds) the
+// slot — the caller is expected to have computed n as the max across
+// rows, so overflow shouldn't happen.
+func leftPadToWidth(s string, n int) string {
+	pad := n - lipgloss.Width(s)
+	if pad <= 0 {
+		return s
+	}
+	return strings.Repeat(" ", pad) + s
 }
 
 // sessionBadges builds the slug → badge-text map for a Review Mode
@@ -424,7 +472,7 @@ func clampInt(v, lo, hi int) int {
 const (
 	previewMinTotalWidth = 100
 	previewListMinWidth  = 30
-	previewListMaxWidth  = 60
+	previewListMaxWidth  = 80
 	previewMinPaneWidth  = 30
 	previewGap           = 2
 

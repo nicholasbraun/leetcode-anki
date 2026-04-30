@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -303,6 +304,63 @@ func TestProblemRow_RendersReviewBadge(t *testing.T) {
 	}
 	if !strings.Contains(newRow.String(), "new") {
 		t.Errorf("new row missing 'new' badge, got: %q", newRow.String())
+	}
+}
+
+// Across rows, the badges' right edges must line up at the same column —
+// otherwise "new" sits flush against the title while "due 11mo ago"
+// floats far to the right, and the eye can't scan the column. Right-pad
+// each row's badge to the widest badge in the list.
+func TestProblemRow_BadgesRightAlignAcrossRows(t *testing.T) {
+	const width = 80
+	qs := []Problem{
+		{QuestionFrontendID: "238", Title: "Product of Array Except Self", TitleSlug: "a", Difficulty: "Medium"},
+		{QuestionFrontendID: "206", Title: "Reverse Linked List", TitleSlug: "b", Difficulty: "Easy"},
+		{QuestionFrontendID: "271", Title: "Encode and Decode Strings", TitleSlug: "c", Difficulty: "Medium"},
+	}
+	badges := map[string]string{"a": "due 11mo ago", "b": "due 7mo ago", "c": "new"}
+	l := newProblemsList(width, 20, qs, "test", nil, badges)
+	d := problemsDelegate{}
+
+	ansi := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	endCols := make([]int, len(qs))
+	wantTexts := []string{"due 11mo ago", "due 7mo ago", "new"}
+	for i := range qs {
+		var buf strings.Builder
+		d.Render(&buf, l, i, l.Items()[i])
+		plain := ansi.ReplaceAllString(buf.String(), "")
+		idx := strings.Index(plain, wantTexts[i])
+		if idx < 0 {
+			t.Fatalf("row %d missing badge %q: %s", i, wantTexts[i], plain)
+		}
+		// Convert from byte offset to visible column (the cursor glyph
+		// on the selected row is multi-byte, so byte index != cell index).
+		endCols[i] = lipgloss.Width(plain[:idx]) + lipgloss.Width(wantTexts[i])
+	}
+	for i := 1; i < len(endCols); i++ {
+		if endCols[i] != endCols[0] {
+			t.Errorf("badge right-edge for row %d at col %d, want %d (badges must right-align)", i, endCols[i], endCols[0])
+		}
+	}
+}
+
+// A long badge ("due 11mo ago") combined with a long title used to push
+// the row past the list width because titleMax didn't account for the
+// badge's cells — the terminal then wrapped the row, splitting the
+// difficulty onto a new line. Truncation must reserve room for both.
+func TestProblemRow_BadgeDoesNotOverflowListWidth(t *testing.T) {
+	const width = 60
+	qs := []Problem{
+		{QuestionFrontendID: "238", Title: "Product of Array Except Self", TitleSlug: "product-of-array-except-self", Difficulty: "Medium"},
+	}
+	badges := map[string]string{"product-of-array-except-self": "due 11mo ago"}
+	l := newProblemsList(width, 20, qs, "test", nil, badges)
+
+	var row strings.Builder
+	problemsDelegate{}.Render(&row, l, 0, l.Items()[0])
+
+	if got := lipgloss.Width(row.String()); got > width {
+		t.Errorf("row width = %d > list width %d; long badges must shrink the title, not overflow:\n%s", got, width, row.String())
 	}
 }
 
