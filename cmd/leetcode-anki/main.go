@@ -18,7 +18,14 @@ import (
 
 func main() {
 	logout := flag.Bool("logout", false, "delete cached credentials, then exit")
+	reviewDue := flag.Int("review-due", 2, "Review Mode: max overdue Reviews per session (0 to omit)")
+	reviewNew := flag.Int("review-new", 1, "Review Mode: max new Problems per session (0 to omit)")
 	flag.Parse()
+
+	// Clamp negatives to zero — `make([]X, 0, -1)` panics, and "minus
+	// one due" has no meaningful interpretation either way.
+	*reviewDue = clampNonNegative(*reviewDue)
+	*reviewNew = clampNonNegative(*reviewNew)
 
 	ctx := context.Background()
 
@@ -50,10 +57,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := tui.Run(ctx, client, cache, runner, reviews); err != nil {
+	if err := tui.Run(ctx, client, cache, runner, reviews, *reviewDue, *reviewNew); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func clampNonNegative(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // resolveCreds picks a credential pair for the session, verifying it

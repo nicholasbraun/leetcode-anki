@@ -35,6 +35,24 @@ func TestCredsFromEnv_NilWhenEitherMissing(t *testing.T) {
 	}
 }
 
+// Negative flag values would crash with `make([]X, 0, -1)` panics
+// downstream; clampNonNegative is the boundary defense at flag-parse time.
+func TestClampNonNegative(t *testing.T) {
+	for _, tc := range []struct {
+		in, want int
+	}{
+		{-5, 0},
+		{-1, 0},
+		{0, 0},
+		{1, 1},
+		{42, 42},
+	} {
+		if got := clampNonNegative(tc.in); got != tc.want {
+			t.Errorf("clampNonNegative(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
 // credsFromEnv must clear the env vars after capturing them so editor
 // subprocesses launched via tea.ExecProcess (and any plugins they load)
 // don't see the live session cookie in os.Environ().

@@ -425,9 +425,13 @@ func (m *Model) clearInflight() {
 
 // Run starts the TUI loop. The provided ctx is the parent context for all
 // outbound HTTP requests; cancelling it (e.g. on SIGINT from the parent
-// process) will abort any in-flight run/submit.
-func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) error {
+// process) will abort any in-flight run/submit. reviewDue / reviewNew
+// override the default Review Mode bucket caps; the caller is expected
+// to clamp negatives to zero before invoking.
+func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews, reviewDue, reviewNew int) error {
 	m := NewModel(ctx, client, cache, ed, reviews)
+	m.reviewDue = reviewDue
+	m.reviewNew = reviewNew
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	m.clearInflight()
