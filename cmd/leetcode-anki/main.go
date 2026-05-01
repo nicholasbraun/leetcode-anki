@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"leetcode-anki/internal/auth"
+	"leetcode-anki/internal/cases"
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/sr"
@@ -51,13 +52,19 @@ func main() {
 	cache := editor.NewCache()
 	runner := editor.NewRunner()
 
+	customCases, err := cases.NewDiskCases()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cases: %v\n", err)
+		os.Exit(1)
+	}
+
 	reviews, err := sr.Open(client)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sr: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := tui.Run(ctx, client, cache, runner, reviews, *reviewDue, *reviewNew, status.IsPremium); err != nil {
+	if err := tui.Run(ctx, client, cache, runner, customCases, reviews, *reviewDue, *reviewNew, status.IsPremium); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)
 	}

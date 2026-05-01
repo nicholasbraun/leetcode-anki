@@ -38,7 +38,7 @@ func problemDetailFor(slug string) *leetcode.ProblemDetail {
 // onProblemScreen builds a Model parked on the problem detail screen for
 // the given slug, ready to receive Edit/Run/Submit key events.
 func onProblemScreen(slug string, cache SolutionCache, ed Editor, fc *leetcodefake.Fake) *Model {
-	m := NewModel(context.Background(), fc, cache, ed, newFakeReviews())
+	m := NewModel(context.Background(), fc, cache, ed, newFakeCases(), newFakeReviews())
 	m.width, m.height = 140, 40
 	m.currentProblem = problemDetailFor(slug)
 	m.problem = newProblemView(cache, 100, 30)

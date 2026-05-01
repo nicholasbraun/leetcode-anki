@@ -24,7 +24,7 @@ func modalSetup(t *testing.T) (*Model, *fakeReviews, *leetcodefake.Fake) {
 	}}
 	fr := newFakeReviews()
 	fr.previewResp = [4]time.Time{tomorrow, tomorrow, in6, in6.AddDate(0, 0, 9)}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 		{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
@@ -325,7 +325,7 @@ func TestRejectedShowsStandardResultScreen(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fc := &leetcodefake.Fake{}
 			fr := newFakeReviews()
-			m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+			m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 			loadFakeProblems(t, m, []Problem{
 				{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 			})
@@ -557,7 +557,7 @@ func tallRunResult() *leetcode.RunResult {
 func resultScreenSetup(t *testing.T, width, height int) *Model {
 	t.Helper()
 	fc := &leetcodefake.Fake{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	m.width = width
 	m.height = height
 	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "two-sum", Title: "Two Sum"}
