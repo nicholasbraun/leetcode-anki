@@ -30,6 +30,11 @@ type resultView struct {
 	// Cases added by the user and render with a star glyph.
 	exampleCount int
 
+	// toast is a transient confirmation message rendered above the footer
+	// (e.g. "added" after promoting a failing input). Cleared on the next
+	// key event so it never lingers past the action that produced it.
+	toast string
+
 	// grade is the open rating modal, nil when closed. Pointer so non-Accepted
 	// results render the standard verdict view by simply leaving this nil.
 	grade *gradeModalState
@@ -77,12 +82,34 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if isKey {
+		// A previous toast clears on the next keystroke so the
+		// confirmation never lingers past the action that produced it.
+		m.result.toast = ""
+
+		if km.String() == "a" && canPromoteSubmit(m.result) {
+			input := m.result.submit.LastTestcase
+			if err := m.cases.Add(m.currentProblem.TitleSlug, input); err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.result.toast = "added"
+			return m, nil
+		}
+
 		if keyMatch(km, keys.Back) || keyMatch(km, keys.Enter) {
 			m.screen = screenProblem
 			return m, nil
 		}
 	}
 	return m, nil
+}
+
+// canPromoteSubmit reports whether the current resultView is a Submit
+// Verdict carrying a non-empty LastTestcase that can be added as a Custom
+// Test Case. Mirrors the gate the footer hint uses so 'a' never fires
+// when the affordance isn't advertised.
+func canPromoteSubmit(r resultView) bool {
+	return r.kind == resultSubmit && r.submit != nil && r.submit.LastTestcase != ""
 }
 
 // commitGrade records the user's rating and dispatches the next-screen
@@ -165,20 +192,20 @@ func viewResultView(m *Model) string {
 		{"enter/esc", "back to problem"},
 		{"q", "quit"},
 	}
+	if canPromoteSubmit(m.result) {
+		footItems = append(footItems, footerItem{"a", "add to custom tests"})
+	}
 	if m.result.kind == resultRun && m.result.run != nil && hasCustomCases(m.result.run.Cases, m.result.exampleCount) {
 		footItems = append(footItems, footerItem{"★", "custom"})
 	}
 	foot := footer(w, footItems...)
 
-	return strings.Join([]string{
-		crumbs, "",
-		top,
-		"",
-		body,
-		"",
-		bot,
-		foot,
-	}, "\n")
+	parts := []string{crumbs, "", top, "", body, "", bot}
+	if m.result.toast != "" {
+		parts = append(parts, " "+successStyle.Render(m.result.toast))
+	}
+	parts = append(parts, foot)
+	return strings.Join(parts, "\n")
 }
 
 func problemTitle(m *Model) string {
