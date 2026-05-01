@@ -42,6 +42,12 @@ type resultView struct {
 	// key event so it never lingers past the action that produced it.
 	toast string
 
+	// awaitingRemoveDigit gates the two-step Custom-removal flow: 'x' arms
+	// it, then a digit 1-9 picks the displayed case to drop. Two-step is
+	// deliberate so a stray keypress can't drop a case the user spent time
+	// curating.
+	awaitingRemoveDigit bool
+
 	// grade is the open rating modal, nil when closed. Pointer so non-Accepted
 	// results render the standard verdict view by simply leaving this nil.
 	grade *gradeModalState
@@ -93,6 +99,21 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		// confirmation never lingers past the action that produced it.
 		m.result.toast = ""
 
+		if m.result.awaitingRemoveDigit {
+			handled, cmd := handleRemoveDigit(m, km)
+			if handled {
+				return m, cmd
+			}
+			// Any other key cancels the arming and falls through so
+			// scroll keys (↑/↓, pgup/pgdn) keep working.
+			m.result.awaitingRemoveDigit = false
+		}
+
+		if km.String() == "x" && m.result.kind == resultRun && m.result.run != nil && len(m.result.run.Cases) > 0 {
+			m.result.awaitingRemoveDigit = true
+			return m, nil
+		}
+
 		if km.String() == "a" && canPromoteSubmit(m.result) {
 			input := m.result.submit.LastTestcase
 			if err := m.cases.Add(m.currentProblem.TitleSlug, input); err != nil {
@@ -122,6 +143,39 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 // when the affordance isn't advertised.
 func canPromoteSubmit(r resultView) bool {
 	return r.kind == resultSubmit && r.submit != nil && r.submit.LastTestcase != ""
+}
+
+// handleRemoveDigit processes the second keystroke in the 'x'+digit
+// removal flow. Returns handled=true when the key consumes the awaiting
+// state (digit 1-9 or esc); false means the caller should clear the flag
+// and route the key normally so e.g. arrow keys still scroll the
+// viewport.
+//
+// v1 cap: only digits 1-9 are accepted. Cases at displayed index 10 or
+// later require filesystem cleanup; revisit if real usage hits that wall.
+func handleRemoveDigit(m *Model, km tea.KeyMsg) (bool, tea.Cmd) {
+	s := km.String()
+	if s == "esc" {
+		m.result.awaitingRemoveDigit = false
+		return true, nil
+	}
+	if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+		m.result.awaitingRemoveDigit = false
+		i := int(s[0] - '1')
+		cases := m.result.run.Cases
+		if i >= len(cases) {
+			return true, nil
+		}
+		if i < m.result.exampleCount {
+			m.result.toast = fmt.Sprintf("case %d is an Example — can't remove", i+1)
+			return true, nil
+		}
+		if err := m.cases.Remove(m.currentProblem.TitleSlug, i-m.result.exampleCount); err != nil {
+			m.err = err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // commitGrade records the user's rating and dispatches the next-screen
@@ -204,15 +258,23 @@ func viewResultView(m *Model) string {
 
 	top := divider(w, header, 0, "")
 	bot := divider(w, "", 0, "")
-	footItems := []footerItem{
-		{"enter/esc", "back to problem"},
-		{"q", "quit"},
-	}
-	if canPromoteSubmit(m.result) {
-		footItems = append(footItems, footerItem{"a", "add to custom tests"})
-	}
-	if m.result.kind == resultRun && m.result.run != nil && hasCustomCases(m.result.run.Cases, m.result.exampleCount) {
-		footItems = append(footItems, footerItem{"★", "custom"})
+	var footItems []footerItem
+	if m.result.awaitingRemoveDigit {
+		footItems = []footerItem{
+			{"1-9", "remove case"},
+			{"esc", "cancel"},
+		}
+	} else {
+		footItems = []footerItem{
+			{"enter/esc", "back to problem"},
+			{"q", "quit"},
+		}
+		if canPromoteSubmit(m.result) {
+			footItems = append(footItems, footerItem{"a", "add to custom tests"})
+		}
+		if m.result.kind == resultRun && m.result.run != nil && hasCustomCases(m.result.run.Cases, m.result.exampleCount) {
+			footItems = append(footItems, footerItem{"★", "custom"})
+		}
 	}
 	foot := footer(w, footItems...)
 
