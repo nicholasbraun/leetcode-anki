@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -24,6 +25,12 @@ type resultView struct {
 	kind   resultKind
 	run    *leetcode.RunResult
 	submit *leetcode.SubmitResult
+
+	// bodyVP wraps only the verdict body so long Run/Submit outputs (many
+	// cases, long error traces) scroll without taking the breadcrumb,
+	// verdict header, dividers, or footer with them. Sized in
+	// viewResultView from the screen dimensions minus chrome.
+	bodyVP viewport.Model
 
 	// grade is the open rating modal, nil when closed. Pointer so non-Accepted
 	// results render the standard verdict view by simply leaving this nil.
@@ -77,7 +84,12 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	return m, nil
+
+	// Unhandled messages — including viewport scroll keys (↑/↓, j/k,
+	// pgup/pgdn, home/end) — fall through so long bodies stay reachable.
+	var cmd tea.Cmd
+	m.result.bodyVP, cmd = m.result.bodyVP.Update(msg)
+	return m, cmd
 }
 
 // commitGrade records the user's rating and dispatches the next-screen
@@ -143,6 +155,10 @@ func viewResultView(m *Model) string {
 	if w <= 0 {
 		w = 80
 	}
+	h := m.height
+	if h <= 0 {
+		h = 24
+	}
 
 	crumbs := breadcrumb(w, "leetcode-anki", m.currentList.Name, problemTitle(m), "result")
 
@@ -161,16 +177,28 @@ func viewResultView(m *Model) string {
 		footerItem{"q", "quit"},
 	)
 
+	bodyH := h - resultChromeHeight
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	m.result.bodyVP.Width = w
+	m.result.bodyVP.Height = bodyH
+	m.result.bodyVP.SetContent(body)
+
 	return strings.Join([]string{
 		crumbs, "",
 		top,
 		"",
-		body,
+		m.result.bodyVP.View(),
 		"",
 		bot,
 		foot,
 	}, "\n")
 }
+
+// resultChromeHeight reserves lines around the body viewport: breadcrumb,
+// blank, top divider, blank, blank, bottom divider, footer.
+const resultChromeHeight = 7
 
 func problemTitle(m *Model) string {
 	if m.currentProblem == nil {

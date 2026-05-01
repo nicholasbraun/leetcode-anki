@@ -534,3 +534,83 @@ func TestRenderSubmitResult(t *testing.T) {
 		})
 	}
 }
+
+// tallRunResult returns a Wrong-Answer Run with enough cases that its body
+// is guaranteed taller than the viewport on a 24-row terminal. The verdict
+// header substring ("✗ Wrong Answer") is the anchor proof for the scroll
+// tests below — if scrolling pushes it off the rendered output, the
+// viewport is wrapping the whole screen instead of just the body.
+func tallRunResult() *leetcode.RunResult {
+	cases := make([]leetcode.RunCase, 12)
+	for i := range cases {
+		cases[i] = leetcode.RunCase{
+			Index:    i,
+			Input:    "[2,7,11,15]\n9",
+			Output:   "[0,1]",
+			Expected: "[0,2]",
+			Pass:     i%2 == 0,
+		}
+	}
+	return &leetcode.RunResult{StatusMsg: "Accepted", CorrectAnswer: false, Cases: cases}
+}
+
+func resultScreenSetup(t *testing.T, width, height int) *Model {
+	t.Helper()
+	fc := &leetcodefake.Fake{}
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m.width = width
+	m.height = height
+	m.currentProblem = &leetcode.ProblemDetail{TitleSlug: "two-sum", Title: "Two Sum"}
+	m.currentList.Name = "favorites"
+	_, _ = m.Update(runResultMsg{result: tallRunResult()})
+	// One View pass so the viewport's content + size are in place before
+	// tests poke at YOffset.
+	_ = viewResultView(m)
+	return m
+}
+
+func TestResultBodyViewportScrolls(t *testing.T) {
+	m := resultScreenSetup(t, 80, 24)
+
+	if m.result.bodyVP.YOffset != 0 {
+		t.Fatalf("YOffset before scroll = %d, want 0", m.result.bodyVP.YOffset)
+	}
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+
+	if m.result.bodyVP.YOffset <= 0 {
+		t.Errorf("YOffset after pgdn = %d, want > 0 (body should have scrolled)", m.result.bodyVP.YOffset)
+	}
+}
+
+func TestResultViewportPreservesAnchors(t *testing.T) {
+	m := resultScreenSetup(t, 80, 24)
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+
+	view := viewResultView(m)
+	for _, want := range []string{"Wrong Answer", "back to problem"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("after scroll, view missing anchor %q\nview:\n%s", want, view)
+		}
+	}
+}
+
+func TestResultBackAndEnterBypassViewport(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  tea.KeyMsg
+	}{
+		{"esc", tea.KeyMsg{Type: tea.KeyEsc}},
+		{"enter", tea.KeyMsg{Type: tea.KeyEnter}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := resultScreenSetup(t, 80, 24)
+			_, _ = m.Update(tc.key)
+			if m.screen != screenProblem {
+				t.Errorf("screen after %s = %d, want screenProblem", tc.name, m.screen)
+			}
+		})
+	}
+}
