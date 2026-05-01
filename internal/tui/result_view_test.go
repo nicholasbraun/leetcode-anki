@@ -368,6 +368,107 @@ func TestModalSwallowsScreenKeys(t *testing.T) {
 	}
 }
 
+func TestRenderCaseGrid(t *testing.T) {
+	cases := []leetcode.RunCase{
+		{Index: 0, Input: "[2,7,11,15]\n9", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+		{Index: 1, Input: "[3,2,4]\n6", Output: "[1,2]", Expected: "[1,2]", Pass: true},
+		{Index: 2, Input: "[3,3]\n6", Output: "[0,1]", Expected: "[0,1]", Pass: true},
+	}
+
+	t.Run("empty cases", func(t *testing.T) {
+		if got := renderCaseGrid(nil, 0, 130); got != "" {
+			t.Errorf("nil cases: want empty, got %q", got)
+		}
+		if got := renderCaseGrid([]leetcode.RunCase{}, 0, 130); got != "" {
+			t.Errorf("empty cases: want empty, got %q", got)
+		}
+	})
+
+	// caseRowSet returns the set of "case N" labels appearing anywhere on
+	// the same physical line — JoinHorizontal aligns block headers, so two
+	// labels sharing a line means those cases are in the same row.
+	caseRowSet := func(out string) []map[string]bool {
+		var rows []map[string]bool
+		var cur map[string]bool
+		for _, ln := range strings.Split(out, "\n") {
+			found := map[string]bool{}
+			for _, label := range []string{"case 1", "case 2", "case 3"} {
+				if strings.Contains(ln, label) {
+					found[label] = true
+				}
+			}
+			if len(found) > 0 {
+				if cur == nil {
+					cur = found
+				} else {
+					for k := range found {
+						cur[k] = true
+					}
+				}
+			} else if cur != nil {
+				rows = append(rows, cur)
+				cur = nil
+			}
+		}
+		if cur != nil {
+			rows = append(rows, cur)
+		}
+		return rows
+	}
+
+	t.Run("width 130: 3 cases in 1 row of 3 columns", func(t *testing.T) {
+		got := renderCaseGrid(cases, 0, 130)
+		rows := caseRowSet(got)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d:\n%s", len(rows), got)
+		}
+		for _, label := range []string{"case 1", "case 2", "case 3"} {
+			if !rows[0][label] {
+				t.Errorf("row 0 missing %q\n%s", label, got)
+			}
+		}
+	})
+
+	t.Run("width 80: 3 cases in 2 rows (2+1)", func(t *testing.T) {
+		got := renderCaseGrid(cases, 0, 80)
+		rows := caseRowSet(got)
+		if len(rows) != 2 {
+			t.Fatalf("want 2 rows, got %d:\n%s", len(rows), got)
+		}
+		if !(rows[0]["case 1"] && rows[0]["case 2"] && !rows[0]["case 3"]) {
+			t.Errorf("row 0 should hold cases 1,2 only: %v\n%s", rows[0], got)
+		}
+		if !(rows[1]["case 3"] && !rows[1]["case 1"] && !rows[1]["case 2"]) {
+			t.Errorf("row 1 should hold case 3 only: %v\n%s", rows[1], got)
+		}
+	})
+
+	t.Run("width 50: 3 cases in 3 single-column rows", func(t *testing.T) {
+		got := renderCaseGrid(cases, 0, 50)
+		rows := caseRowSet(got)
+		if len(rows) != 3 {
+			t.Fatalf("want 3 rows, got %d:\n%s", len(rows), got)
+		}
+		for i, label := range []string{"case 1", "case 2", "case 3"} {
+			if !rows[i][label] {
+				t.Errorf("row %d should hold only %q: %v\n%s", i, label, rows[i], got)
+			}
+		}
+	})
+
+	t.Run("preserves per-case block contents", func(t *testing.T) {
+		got := renderCaseGrid(cases, 0, 130)
+		for _, want := range []string{
+			"[2,7,11,15]", "[3,2,4]", "[3,3]",
+			"your output", "expected", "pass",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("missing %q in:\n%s", want, got)
+			}
+		}
+	})
+}
+
 func TestRenderSubmitResult(t *testing.T) {
 	tests := []struct {
 		name        string

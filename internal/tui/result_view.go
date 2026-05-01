@@ -149,7 +149,7 @@ func viewResultView(m *Model) string {
 	var header, body string
 	switch m.result.kind {
 	case resultRun:
-		header, body = runHeaderAndBody(m.result.run)
+		header, body = runHeaderAndBody(m.result.run, w)
 	case resultSubmit:
 		header, body = submitHeaderAndBody(m.result.submit)
 	}
@@ -181,7 +181,8 @@ func problemTitle(m *Model) string {
 
 // runHeaderAndBody returns the colored header and the body for a Run Verdict.
 // nil yields a "no verdict" header so the screen still draws.
-func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
+// width sizes the per-case grid in runBody.
+func runHeaderAndBody(r *leetcode.RunResult, width int) (string, string) {
 	if r == nil {
 		return errorStyle.Render("no verdict"), ""
 	}
@@ -193,9 +194,9 @@ func runHeaderAndBody(r *leetcode.RunResult) (string, string) {
 		return errorStyle.Render("⚠ Runtime Error"),
 			errBody(r.LastTestcase, r.FullRuntimeError, r.RuntimeError)
 	case !r.CorrectAnswer:
-		return errorStyle.Render("✗ Wrong Answer"), runBody(r)
+		return errorStyle.Render("✗ Wrong Answer"), runBody(r, width)
 	default:
-		return successStyle.Render("✓ Accepted"), runBody(r)
+		return successStyle.Render("✓ Accepted"), runBody(r, width)
 	}
 }
 
@@ -223,9 +224,9 @@ func submitHeaderAndBody(r *leetcode.SubmitResult) (string, string) {
 
 // runBody renders the body for both Accepted and Wrong-Answer Run
 // Verdicts: a compact summary header followed by per-case blocks
-// (input, your output, expected, stdout). Compile / runtime branches
-// short-circuit upstream — they never carry Cases.
-func runBody(r *leetcode.RunResult) string {
+// (input, your output, expected, stdout) laid out as a grid. Compile /
+// runtime branches short-circuit upstream — they never carry Cases.
+func runBody(r *leetcode.RunResult, width int) string {
 	rows := []string{}
 	if n := len(r.Cases); n > 0 {
 		rows = append(rows, kv("test cases", fmt.Sprintf("%d / %d passed", countPassed(r.Cases), n)))
@@ -239,10 +240,43 @@ func runBody(r *leetcode.RunResult) string {
 	if r.Lang != "" {
 		rows = append(rows, kv("language", r.Lang))
 	}
-	for _, tc := range r.Cases {
-		rows = append(rows, "", runCaseBlock(tc))
+	if grid := renderCaseGrid(r.Cases, 0, width); grid != "" {
+		rows = append(rows, "", grid)
 	}
 	return strings.Join(rows, "\n")
+}
+
+// renderCaseGrid lays per-case blocks side-by-side in 1–3 columns based
+// on the available width: cols = max(1, width/38), so 38 chars is the
+// minimum per column. Cases beyond the first row wrap to a new row.
+//
+// exampleCount is plumbed through but unused at this layer; later slices
+// use it to mark Custom (non-Example) cases with a glyph.
+func renderCaseGrid(cases []leetcode.RunCase, exampleCount int, width int) string {
+	_ = exampleCount
+	if len(cases) == 0 {
+		return ""
+	}
+	cols := width / 38
+	if cols < 1 {
+		cols = 1
+	}
+	colWidth := width / cols
+
+	var rowStrs []string
+	for start := 0; start < len(cases); start += cols {
+		end := start + cols
+		if end > len(cases) {
+			end = len(cases)
+		}
+		blocks := make([]string, 0, end-start)
+		for _, tc := range cases[start:end] {
+			block := lipgloss.NewStyle().Width(colWidth).Render(runCaseBlock(tc))
+			blocks = append(blocks, block)
+		}
+		rowStrs = append(rowStrs, lipgloss.JoinHorizontal(lipgloss.Top, blocks...))
+	}
+	return strings.Join(rowStrs, "\n\n")
 }
 
 func countPassed(cs []leetcode.RunCase) int {
@@ -358,9 +392,11 @@ func indent(s string, n int) string {
 }
 
 // renderRunResult composes the header + body for tests; the screen view
-// drives the same building blocks through divider chrome.
+// drives the same building blocks through divider chrome. Width 80 is a
+// conservative default that keeps cases in a single column so existing
+// expectations about content order are preserved.
 func renderRunResult(r *leetcode.RunResult) string {
-	header, body := runHeaderAndBody(r)
+	header, body := runHeaderAndBody(r, 80)
 	if body == "" {
 		return header
 	}
