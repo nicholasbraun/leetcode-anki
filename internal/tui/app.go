@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -30,6 +31,7 @@ type Model struct {
 	client  LeetcodeClient
 	cache   SolutionCache
 	editor  Editor
+	cases   Cases
 	reviews sr.Reviews
 	ctx     context.Context
 
@@ -114,11 +116,12 @@ func shouldConfirmQuit(m *Model) bool {
 	return m.screen == screenProblem && m.reviewMode && m.problem.attemptPath != ""
 }
 
-func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) *Model {
+func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, customCases Cases, reviews sr.Reviews) *Model {
 	return &Model{
 		client:      client,
 		cache:       cache,
 		editor:      ed,
+		cases:       customCases,
 		reviews:     reviews,
 		ctx:         ctx,
 		screen:      screenLists,
@@ -317,7 +320,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case runResultMsg:
 		m.load.Stop()
 		m.clearInflight()
-		m.result = resultView{kind: resultRun, run: msg.result}
+		m.result = resultView{kind: resultRun, run: msg.result, exampleCount: msg.exampleCount}
 		m.screen = screenResult
 		return m, nil
 
@@ -521,8 +524,8 @@ func (m *Model) clearInflight() {
 // to clamp negatives to zero before invoking. userIsPremium is the
 // LeetCode account's subscription status — when false, paid Problems
 // are stripped from Review-Mode recommendations.
-func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews, reviewDue, reviewNew int, userIsPremium bool) error {
-	m := NewModel(ctx, client, cache, ed, reviews)
+func Run(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, customCases Cases, reviews sr.Reviews, reviewDue, reviewNew int, userIsPremium bool) error {
+	m := NewModel(ctx, client, cache, ed, customCases, reviews)
 	m.reviewDue = reviewDue
 	m.reviewNew = reviewNew
 	m.userIsPremium = userIsPremium
@@ -554,8 +557,13 @@ type problemLoadedMsg struct {
 	problem *leetcode.ProblemDetail
 }
 
+// runResultMsg carries the verdict back to the result screen along with the
+// number of Example Test Cases that fed the Run. exampleCount lets the
+// renderer mark cases at index >= exampleCount as Customs (the user-added
+// inputs that came after Examples in the merged dataInput).
 type runResultMsg struct {
-	result *leetcode.RunResult
+	result       *leetcode.RunResult
+	exampleCount int
 }
 
 type submitResultMsg struct {
@@ -639,26 +647,56 @@ func loadProblemCmd(parent context.Context, c LeetcodeClient, titleSlug string) 
 	}
 }
 
-// runCodeCmd reads the solution off disk and runs it server-side.
+// runCodeCmd reads the solution off disk, merges the Problem's Example
+// Test Cases with the user's Custom Test Cases, and runs the combined
+// dataInput server-side.
 //
-// The returned cmd is paired with cancelFn: the model stores cancelFn so that
-// pressing esc during the run can cancel the in-flight HTTP request, instead
-// of the goroutine continuing to run and eventually clobbering model state
-// with a stale runResultMsg.
-func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
+// The returned cmd is paired with cancelFn: the model stores cancelFn so
+// that pressing esc during the run can cancel the in-flight HTTP request,
+// instead of the goroutine continuing and eventually clobbering model
+// state with a stale runResultMsg.
+func runCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, customCases Cases, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, submitTimeout)
 	cmd := func() tea.Msg {
 		code, err := cache.Read(path)
 		if err != nil {
 			return errMsg{err}
 		}
-		res, err := c.InterpretSolution(ctx, p.TitleSlug, langSlug, p.QuestionID, code, p.ExampleTestcases, p.MetaData)
+		customs, err := customCases.List(p.TitleSlug)
 		if err != nil {
 			return errMsg{err}
 		}
-		return runResultMsg{result: res}
+		dataInput := mergeRunInput(p.ExampleTestcases, customs)
+		exampleCount := leetcode.CountCases(p.ExampleTestcases, p.MetaData)
+		res, err := c.InterpretSolution(ctx, p.TitleSlug, langSlug, p.QuestionID, code, dataInput, p.MetaData)
+		if err != nil {
+			return errMsg{err}
+		}
+		return runResultMsg{result: res, exampleCount: exampleCount}
 	}
 	return cmd, cancel
+}
+
+// mergeRunInput joins Examples with Customs using "\n" the way LeetCode's
+// data_input encodes successive cases. Skips the separator when either
+// side is empty so a Problem with no Customs sees exactly its
+// ExampleTestcases (no spurious trailing newline that could shift case
+// counts in splitDataInput).
+func mergeRunInput(examples string, customs []string) string {
+	custom := ""
+	if len(customs) > 0 {
+		custom = strings.Join(customs, "\n")
+	}
+	switch {
+	case examples == "" && custom == "":
+		return ""
+	case examples == "":
+		return custom
+	case custom == "":
+		return examples
+	default:
+		return examples + "\n" + custom
+	}
 }
 
 func submitCodeCmd(parent context.Context, c LeetcodeClient, cache SolutionCache, p *leetcode.ProblemDetail, langSlug, path string) (tea.Cmd, context.CancelFunc) {

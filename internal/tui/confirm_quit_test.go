@@ -113,7 +113,7 @@ func TestQuitDispatch_Q_ExploreMode_Quits(t *testing.T) {
 
 // q on screens other than problem quits immediately.
 func TestQuitDispatch_Q_OnListsScreen_Quits(t *testing.T) {
-	m := NewModel(context.Background(), &leetcodefake.Fake{}, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), &leetcodefake.Fake{}, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	m.screen = screenLists
 	m.listsReady = true
 	_, cmd := m.Update(keyQuit)

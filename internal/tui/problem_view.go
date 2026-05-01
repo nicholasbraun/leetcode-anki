@@ -287,7 +287,7 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.err = nil
-			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.currentProblem, pv.chosenLang, path)
+			cmd, cancel := runCodeCmd(m.ctx, m.client, m.cache, m.cases, m.currentProblem, pv.chosenLang, path)
 			m.cancelInflight = cancel
 			return m, tea.Batch(m.load.Start(KindRun, "running"), cmd)
 		case keyMatch(km, keys.Submit):

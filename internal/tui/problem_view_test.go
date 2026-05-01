@@ -46,7 +46,7 @@ func onDetailScreenWithSolution(t *testing.T, reviewMode bool) *Model {
 	t.Helper()
 	cache := newFakeCache()
 	ed := newFakeEditor()
-	m := NewModel(context.Background(), &leetcodefake.Fake{}, cache, ed, newFakeReviews())
+	m := NewModel(context.Background(), &leetcodefake.Fake{}, cache, ed, newFakeCases(), newFakeReviews())
 	m.width, m.height = 140, 40
 	m.reviewMode = reviewMode
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}

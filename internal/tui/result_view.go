@@ -25,6 +25,11 @@ type resultView struct {
 	run    *leetcode.RunResult
 	submit *leetcode.SubmitResult
 
+	// exampleCount is the Problem's Example Test Case count for the Run
+	// behind this view. Cases at index >= exampleCount are Custom Test
+	// Cases added by the user and render with a star glyph.
+	exampleCount int
+
 	// grade is the open rating modal, nil when closed. Pointer so non-Accepted
 	// results render the standard verdict view by simply leaving this nil.
 	grade *gradeModalState
@@ -149,17 +154,21 @@ func viewResultView(m *Model) string {
 	var header, body string
 	switch m.result.kind {
 	case resultRun:
-		header, body = runHeaderAndBody(m.result.run, w)
+		header, body = runHeaderAndBody(m.result.run, m.result.exampleCount, w)
 	case resultSubmit:
 		header, body = submitHeaderAndBody(m.result.submit)
 	}
 
 	top := divider(w, header, 0, "")
 	bot := divider(w, "", 0, "")
-	foot := footer(w,
-		footerItem{"enter/esc", "back to problem"},
-		footerItem{"q", "quit"},
-	)
+	footItems := []footerItem{
+		{"enter/esc", "back to problem"},
+		{"q", "quit"},
+	}
+	if m.result.kind == resultRun && m.result.run != nil && hasCustomCases(m.result.run.Cases, m.result.exampleCount) {
+		footItems = append(footItems, footerItem{"★", "custom"})
+	}
+	foot := footer(w, footItems...)
 
 	return strings.Join([]string{
 		crumbs, "",
@@ -181,8 +190,9 @@ func problemTitle(m *Model) string {
 
 // runHeaderAndBody returns the colored header and the body for a Run Verdict.
 // nil yields a "no verdict" header so the screen still draws.
-// width sizes the per-case grid in runBody.
-func runHeaderAndBody(r *leetcode.RunResult, width int) (string, string) {
+// width sizes the per-case grid in runBody. exampleCount marks the boundary
+// between Examples and Customs in the rendered case grid.
+func runHeaderAndBody(r *leetcode.RunResult, exampleCount, width int) (string, string) {
 	if r == nil {
 		return errorStyle.Render("no verdict"), ""
 	}
@@ -194,9 +204,9 @@ func runHeaderAndBody(r *leetcode.RunResult, width int) (string, string) {
 		return errorStyle.Render("⚠ Runtime Error"),
 			errBody(r.LastTestcase, r.FullRuntimeError, r.RuntimeError)
 	case !r.CorrectAnswer:
-		return errorStyle.Render("✗ Wrong Answer"), runBody(r, width)
+		return errorStyle.Render("✗ Wrong Answer"), runBody(r, exampleCount, width)
 	default:
-		return successStyle.Render("✓ Accepted"), runBody(r, width)
+		return successStyle.Render("✓ Accepted"), runBody(r, exampleCount, width)
 	}
 }
 
@@ -226,7 +236,7 @@ func submitHeaderAndBody(r *leetcode.SubmitResult) (string, string) {
 // Verdicts: a compact summary header followed by per-case blocks
 // (input, your output, expected, stdout) laid out as a grid. Compile /
 // runtime branches short-circuit upstream — they never carry Cases.
-func runBody(r *leetcode.RunResult, width int) string {
+func runBody(r *leetcode.RunResult, exampleCount, width int) string {
 	rows := []string{}
 	if n := len(r.Cases); n > 0 {
 		rows = append(rows, kv("test cases", fmt.Sprintf("%d / %d passed", countPassed(r.Cases), n)))
@@ -240,7 +250,7 @@ func runBody(r *leetcode.RunResult, width int) string {
 	if r.Lang != "" {
 		rows = append(rows, kv("language", r.Lang))
 	}
-	if grid := renderCaseGrid(r.Cases, 0, width); grid != "" {
+	if grid := renderCaseGrid(r.Cases, exampleCount, width); grid != "" {
 		rows = append(rows, "", grid)
 	}
 	return strings.Join(rows, "\n")
@@ -250,10 +260,10 @@ func runBody(r *leetcode.RunResult, width int) string {
 // on the available width: cols = max(1, width/38), so 38 chars is the
 // minimum per column. Cases beyond the first row wrap to a new row.
 //
-// exampleCount is plumbed through but unused at this layer; later slices
-// use it to mark Custom (non-Example) cases with a glyph.
+// Cases at index >= exampleCount are Customs; they render with a star
+// glyph so the user can tell their inputs from LeetCode-supplied Examples
+// at a glance.
 func renderCaseGrid(cases []leetcode.RunCase, exampleCount int, width int) string {
-	_ = exampleCount
 	if len(cases) == 0 {
 		return ""
 	}
@@ -271,12 +281,24 @@ func renderCaseGrid(cases []leetcode.RunCase, exampleCount int, width int) strin
 		}
 		blocks := make([]string, 0, end-start)
 		for _, tc := range cases[start:end] {
-			block := lipgloss.NewStyle().Width(colWidth).Render(runCaseBlock(tc))
+			block := lipgloss.NewStyle().Width(colWidth).Render(runCaseBlock(tc, tc.Index >= exampleCount))
 			blocks = append(blocks, block)
 		}
 		rowStrs = append(rowStrs, lipgloss.JoinHorizontal(lipgloss.Top, blocks...))
 	}
 	return strings.Join(rowStrs, "\n\n")
+}
+
+// hasCustomCases reports whether any RunCase falls past the Example
+// boundary. Used to decide whether to surface the "★ custom" footer
+// legend on the Run Result screen.
+func hasCustomCases(cases []leetcode.RunCase, exampleCount int) bool {
+	for _, c := range cases {
+		if c.Index >= exampleCount {
+			return true
+		}
+	}
+	return false
 }
 
 func countPassed(cs []leetcode.RunCase) int {
@@ -289,11 +311,16 @@ func countPassed(cs []leetcode.RunCase) int {
 	return n
 }
 
-// runCaseBlock formats one RunCase as a small labeled block. Empty
+// runCaseBlock formats one RunCase as a small labeled block. isCustom
+// inserts a star glyph between the index and verdict so user-added
+// Custom Test Cases stand apart from LeetCode-supplied Examples. Empty
 // fields collapse — pass cases without stdout still print input /
 // your output / expected, so the layout is stable across cases.
-func runCaseBlock(c leetcode.RunCase) string {
+func runCaseBlock(c leetcode.RunCase, isCustom bool) string {
 	header := fmt.Sprintf("  case %d", c.Index+1)
+	if isCustom {
+		header += " " + breadcrumbActiveStyle.Render("★")
+	}
 	if c.Pass {
 		header += "    " + successStyle.Render("✓ pass")
 	} else {
@@ -394,9 +421,10 @@ func indent(s string, n int) string {
 // renderRunResult composes the header + body for tests; the screen view
 // drives the same building blocks through divider chrome. Width 80 is a
 // conservative default that keeps cases in a single column so existing
-// expectations about content order are preserved.
+// expectations about content order are preserved. exampleCount=0 here
+// because the legacy fixtures predate Custom Test Cases.
 func renderRunResult(r *leetcode.RunResult) string {
-	header, body := runHeaderAndBody(r, 80)
+	header, body := runHeaderAndBody(r, 0, 80)
 	if body == "" {
 		return header
 	}

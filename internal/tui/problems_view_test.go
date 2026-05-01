@@ -29,7 +29,7 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 		"a": sampleDetail("a"), "b": sampleDetail("b"),
 		"c": sampleDetail("c"), "d": sampleDetail("d"),
 	}}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 		{QuestionFrontendID: "2", Title: "B", TitleSlug: "b"},
@@ -65,7 +65,7 @@ func TestProblemsScreenDebouncesRapidCursorMoves(t *testing.T) {
 
 func TestProblemsScreenEnterReusesPreviewCache(t *testing.T) {
 	fc := &leetcodefake.Fake{Details: map[string]*leetcode.ProblemDetail{"a": sampleDetail("a")}}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -135,7 +135,7 @@ func TestRowGlyph(t *testing.T) {
 
 func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 	fc := &leetcodefake.Fake{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -158,7 +158,7 @@ func TestSubmitAcceptedMarksProblemSolved(t *testing.T) {
 func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -187,7 +187,7 @@ func TestSubmitWrongAnswerDoesNotMarkSolved(t *testing.T) {
 func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "A", TitleSlug: "a"},
 	})
@@ -208,7 +208,7 @@ func TestSubmitAcceptedDefersRecordToRatingModal(t *testing.T) {
 
 func TestProblemsScreenSkipsFetchForPremium(t *testing.T) {
 	fc := &leetcodefake.Fake{}
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeReviews())
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), newFakeReviews())
 	loadFakeProblems(t, m, []Problem{
 		{QuestionFrontendID: "1", Title: "Premium", TitleSlug: "p", PaidOnly: true},
 	})

@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"leetcode-anki/internal/cases"
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 )
@@ -49,8 +50,19 @@ type Editor interface {
 	Open(path string) tea.Cmd
 }
 
+// Cases is the storage interface for per-Problem Custom Test Cases. The TUI
+// depends on this interface (not the concrete *cases.DiskCases) so run /
+// add / remove flows can be driven by an in-memory fake without touching
+// the user's cache directory.
+type Cases interface {
+	List(slug string) ([]string, error)
+	Add(slug, input string) error
+	Remove(slug string, index int) error
+}
+
 var (
 	_ LeetcodeClient = (*leetcode.Client)(nil)
 	_ SolutionCache  = (*editor.Cache)(nil)
 	_ Editor         = (*editor.Runner)(nil)
+	_ Cases          = (*cases.DiskCases)(nil)
 )

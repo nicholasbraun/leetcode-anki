@@ -19,7 +19,7 @@ import (
 func TestV_OnListsScreen_TogglesReviewMode(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.listsReady = true
 	m.lists = newListsList(140, 30, []leetcode.FavoriteList{{Slug: "x", Name: "X"}})
@@ -49,7 +49,7 @@ func TestV_OnListsScreen_TogglesReviewMode(t *testing.T) {
 func TestEnter_InReviewMode_PreservesMode(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.listsReady = true
 	m.reviewMode = true
@@ -73,7 +73,7 @@ func TestEnter_InReviewMode_PreservesMode(t *testing.T) {
 func TestBack_FromProblems_PreservesReviewMode(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.reviewMode = true
 	m.screen = screenProblems
@@ -96,7 +96,7 @@ func TestV_OnProblemsScreen_TogglesAndRefilters(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
@@ -148,7 +148,7 @@ func TestV_OnProblemsScreen_FromExplore_LoadsSession(t *testing.T) {
 		"x": {{TitleSlug: "a", Status: &ac}},
 	}}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = false
@@ -176,7 +176,7 @@ func TestProblemsLoaded_FiltersToSessionWhenReviewMode(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
@@ -217,7 +217,7 @@ func TestProblemsLoaded_FiltersToSessionWhenReviewMode(t *testing.T) {
 func TestProblemsLoaded_NonReview_NoFilter(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 
@@ -360,7 +360,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 	ac := "AC"
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
@@ -386,7 +386,7 @@ func TestReviewMode_EmptyState(t *testing.T) {
 func TestReviewMode_HeaderShowsCountsAndTotals(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
@@ -419,7 +419,7 @@ func TestReviewMode_HeaderShowsCountsAndTotals(t *testing.T) {
 func TestReviewMode_HeaderFallbackWhenSessionNil(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.currentList = leetcode.FavoriteList{Slug: "x", Name: "X"}
 	m.reviewMode = true
@@ -440,7 +440,7 @@ func TestReviewMode_HeaderFallbackWhenSessionNil(t *testing.T) {
 func TestReviewMode_BreadcrumbReflectsMode(t *testing.T) {
 	fc := &leetcodefake.Fake{}
 	fr := newFakeReviews()
-	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), fr)
+	m := NewModel(context.Background(), fc, newFakeCache(), newFakeEditor(), newFakeCases(), fr)
 	m.width, m.height = 140, 40
 	m.reviewMode = true
 	m.screen = screenProblems

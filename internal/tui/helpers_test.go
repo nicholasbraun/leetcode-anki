@@ -247,6 +247,77 @@ func (f *fakeReviews) Preview(_ context.Context, _ string, _ time.Time) ([4]time
 	return f.previewResp, f.previewErr
 }
 
+// fakeCases is an in-memory Cases for tests. Records every method call so
+// assertions can verify the TUI consults storage with the right slug. Add
+// dedupes silently to match DiskCases semantics.
+type fakeCases struct {
+	mu sync.Mutex
+
+	bySlug map[string][]string
+
+	listCalls   []string
+	addCalls    []addCall
+	removeCalls []removeCall
+
+	// listErr / addErr / removeErr drive failure paths (e.g. corrupt-file
+	// handling) without piggybacking on real production errors.
+	listErr   error
+	addErr    error
+	removeErr error
+}
+
+type addCall struct{ Slug, Input string }
+
+type removeCall struct {
+	Slug  string
+	Index int
+}
+
+func newFakeCases() *fakeCases { return &fakeCases{bySlug: map[string][]string{}} }
+
+func (c *fakeCases) List(slug string) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.listCalls = append(c.listCalls, slug)
+	if c.listErr != nil {
+		return nil, c.listErr
+	}
+	out := make([]string, len(c.bySlug[slug]))
+	copy(out, c.bySlug[slug])
+	return out, nil
+}
+
+func (c *fakeCases) Add(slug, input string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.addCalls = append(c.addCalls, addCall{Slug: slug, Input: input})
+	if c.addErr != nil {
+		return c.addErr
+	}
+	for _, e := range c.bySlug[slug] {
+		if e == input {
+			return nil
+		}
+	}
+	c.bySlug[slug] = append(c.bySlug[slug], input)
+	return nil
+}
+
+func (c *fakeCases) Remove(slug string, index int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.removeCalls = append(c.removeCalls, removeCall{Slug: slug, Index: index})
+	if c.removeErr != nil {
+		return c.removeErr
+	}
+	cases := c.bySlug[slug]
+	if index < 0 || index >= len(cases) {
+		return fmt.Errorf("fakeCases: index %d out of range", index)
+	}
+	c.bySlug[slug] = append(cases[:index], cases[index+1:]...)
+	return nil
+}
+
 // drainBatch invokes a tea.Cmd whose result is a tea.BatchMsg, running
 // each leaf cmd concurrently and waiting for them all to return. Run /
 // submit dispatches batch the work cmd with the loading-indicator's
