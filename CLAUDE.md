@@ -94,3 +94,17 @@ LeetCode session cookies expire every few weeks, after which the action will fai
 1. Log into the **test account** in your browser, open devtools → Application → Cookies → `https://leetcode.com`, and copy the `LEETCODE_SESSION` and `csrftoken` values.
 2. In the GitHub repo: **Settings → Secrets and variables → Actions** → update `LEETCODE_TEST_SESSION` (the `LEETCODE_SESSION` value) and `LEETCODE_TEST_CSRF` (the `csrftoken` value).
 3. Re-run the failed workflow.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) — defaults, no overrides. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

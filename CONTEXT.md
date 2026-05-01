@@ -25,8 +25,15 @@ Create a Solution from the Problem's language snippet if one does not already ex
 
 ### Running and submitting
 
+**Example Test Case**:
+A canonical test input LeetCode supplies on a Problem (sourced from `ProblemDetail.ExampleTestcases`). Read-only — the user cannot edit or remove them.
+
+**Custom Test Case**:
+A test input the user adds to a Problem, typically by promoting the failing input returned with a Wrong-Answer Submit Verdict. Mutable user state: can be added, removed, and persisted across TUI runs. A Run feeds both Example and Custom Test Cases to `interpret_solution`.
+_Avoid_: Extra Test Case, Pinned Test Case, Added Test Case (less aligned with LeetCode's own web vocabulary, which calls these "custom testcases" in the Testcase pane).
+
 **Run** (verb):
-Execute the user's Solution against the Problem's example test cases (LeetCode's `interpret_solution` endpoint). Trial-only — Run Verdicts do not affect SR rotation.
+Execute the user's Solution against the Problem's Example and Custom Test Cases (LeetCode's `interpret_solution` endpoint). Trial-only — Run Verdicts do not affect SR rotation.
 
 **Submit** (verb):
 Execute the user's Solution against LeetCode's full grader (LeetCode's `/submit/` endpoint). The first Accepted Submit puts a Problem into SR rotation.
@@ -55,6 +62,7 @@ The TUI mode that shows the full Problem List regardless of due-state. Today's d
 - A **Run** and a **Submit** each produce exactly one **Verdict**.
 - A **Problem** accumulates **Reviews**; the SR scheduler derives the next due-date from that history.
 - A Problem's first Accepted **Submit Verdict** is also that Problem's first **Review**.
+- A **Problem** carries zero or many **Custom Test Cases**. They feed the next **Run** alongside the Problem's **Example Test Cases**.
 
 ## Example dialogue
 
