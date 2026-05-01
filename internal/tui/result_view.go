@@ -66,16 +66,13 @@ func updateResultView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenProblem
 			return m, nil
 		}
-		// Any other key (q, ctrl+c handled upstream, e, r, s, n, p) is
-		// inert while the modal is open, mirroring the lang-picker pattern.
+		// Action keys (e/r/s/n/p) are inert while the modal is open;
+		// quit keys are handled by the global dispatch in app.go.
 		return m, nil
 	}
 
 	if isKey {
-		switch {
-		case keyMatch(km, keys.Quit):
-			return m, tea.Quit
-		case keyMatch(km, keys.Back), keyMatch(km, keys.Enter):
+		if keyMatch(km, keys.Back) || keyMatch(km, keys.Enter) {
 			m.screen = screenProblem
 			return m, nil
 		}

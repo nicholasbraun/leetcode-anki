@@ -288,10 +288,7 @@ func humanizeOverdue(nextDue, now time.Time) string {
 func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !m.problemsReady {
 		if km, ok := msg.(tea.KeyMsg); ok {
-			switch {
-			case keyMatch(km, keys.Quit):
-				return m, tea.Quit
-			case keyMatch(km, keys.Back):
+			if keyMatch(km, keys.Back) {
 				m.screen = screenLists
 				return m, nil
 			}
@@ -301,8 +298,6 @@ func updateProblemsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		if !m.problems.SettingFilter() {
 			switch {
-			case keyMatch(km, keys.Quit):
-				return m, tea.Quit
 			case keyMatch(km, keys.Back):
 				m.screen = screenLists
 				return m, nil

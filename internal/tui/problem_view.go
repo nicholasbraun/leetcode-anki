@@ -246,8 +246,6 @@ func updateProblemView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case keyMatch(km, keys.Quit):
-			return m, tea.Quit
 		case keyMatch(km, keys.Back):
 			m.screen = screenProblems
 			return m, nil

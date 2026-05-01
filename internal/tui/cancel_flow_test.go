@@ -98,6 +98,47 @@ func TestEsc_CancelsInflightRun(t *testing.T) {
 	wg.Wait()
 }
 
+// ctrl+c during a Run with a live Review-Mode attempt cancels the
+// in-flight request AND opens the confirm-quit modal — it does not quit
+// outright, the user has to confirm with 'y' first.
+func TestCtrlC_DuringRun_WithReviewAttempt_CancelsAndOpensModal(t *testing.T) {
+	cache := newFakeCache()
+	bc, started, done, _ := blockingFake()
+	m := onProblemScreen("two-sum", cache, newFakeEditor(), &leetcodefake.Fake{})
+	m.client = bc
+	m.problem.solutionPath = cache.writeSolution("two-sum", "golang", "package main\n")
+	m.reviewMode = true
+	m.problem.attemptPath = "/fake/tmp/attempt-1.golang"
+	cache.writeAttempt(m.problem.attemptPath, "package main\n")
+
+	_, cmd := m.Update(keyRun)
+	if cmd == nil {
+		t.Fatal("expected run key to schedule a tea.Cmd")
+	}
+	wg, _ := startBatch(cmd)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("InterpretSolution was never invoked")
+	}
+
+	_, cmdAfter := m.Update(keyCtrlC)
+	if cmdAfter != nil {
+		t.Errorf("expected no follow-up cmd from ctrl+c with live attempt, got %T", cmdAfter)
+	}
+	if !m.confirmQuit {
+		t.Error("expected confirmQuit modal to be open")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("InterpretSolution did not return; ctrl+c didn't cancel inflight")
+	}
+	wg.Wait()
+}
+
 // Same flow for Submit — the cancel wiring is duplicated between
 // runCodeCmd and submitCodeCmd, so a regression in one wouldn't be
 // caught by testing the other.

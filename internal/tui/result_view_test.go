@@ -346,10 +346,12 @@ func TestRejectedShowsStandardResultScreen(t *testing.T) {
 	}
 }
 
-// Modal mode swallows screen keys: 'q' does not quit, 'e'/'r'/'s' do
-// nothing. The user must explicitly choose 1-4, enter, or esc.
+// Modal mode swallows screen-action keys: 'e'/'r'/'s' do nothing. The
+// user must explicitly choose 1-4, enter, or esc to dismiss. Quit keys
+// (q / ctrl+c) are handled by the global dispatch in app.go and aren't
+// asserted here — see the confirm-quit tests for that contract.
 func TestModalSwallowsScreenKeys(t *testing.T) {
-	for _, k := range []rune{'q', 'e', 'r', 's', 'n', 'p'} {
+	for _, k := range []rune{'e', 'r', 's', 'n', 'p'} {
 		t.Run(string(k), func(t *testing.T) {
 			m, fr, _ := modalSetup(t)
 			_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{k}})

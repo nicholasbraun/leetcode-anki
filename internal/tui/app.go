@@ -11,6 +11,7 @@ import (
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/sr"
+	"leetcode-anki/internal/tui/modal"
 )
 
 type screen int
@@ -97,6 +98,20 @@ type Model struct {
 
 	// Result screen
 	result resultView
+
+	// confirmQuit gates the quit-confirmation modal. Set when q or ctrl+c
+	// is pressed with a live Review-Mode attempt on the problem screen
+	// (see shouldConfirmQuit). While true, View renders the centered
+	// modal and Update routes only y/esc/n to the modal handler.
+	confirmQuit bool
+}
+
+// shouldConfirmQuit reports whether a quit keypress should open the
+// confirmation modal instead of quitting outright. The modal is only
+// gated by a live Review-Mode attempt on the problem screen — every
+// other situation quits immediately.
+func shouldConfirmQuit(m *Model) bool {
+	return m.screen == screenProblem && m.reviewMode && m.problem.attemptPath != ""
 }
 
 func NewModel(ctx context.Context, client LeetcodeClient, cache SolutionCache, ed Editor, reviews sr.Reviews) *Model {
@@ -125,6 +140,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if handled, cmd := m.previewLoad.Update(msg); handled {
 		return m, cmd
 	}
+	// While the confirm-quit modal is open, only key events go through the
+	// modal handler. Non-key messages (window resizes, spinner ticks, late
+	// run/submit results) fall through to the normal update path so the
+	// underlying screen can transition while the modal sits on top.
+	if m.confirmQuit {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			return m.updateConfirmQuit(km)
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -151,17 +175,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		// Cancel an in-flight run/submit when the user changes their mind. esc
-		// during the spinner aborts the request; ctrl+c always quits and also
-		// cancels.
+		// during the spinner aborts the request without quitting.
 		if msg.String() == "esc" && m.load.Active() && (m.load.kind == KindRun || m.load.kind == KindSubmit) {
 			if m.cancelInflight != nil {
 				m.cancelInflight()
 			}
 			return m, nil
 		}
+		// Centralized quit dispatch. `q` quits unless a Review-Mode attempt
+		// is live on the problem screen, in which case it opens the
+		// confirm-quit modal. `ctrl+c` always cancels any in-flight request
+		// and either quits or opens the modal under the same predicate.
+		if msg.String() == "q" {
+			if shouldConfirmQuit(m) {
+				m.confirmQuit = true
+				return m, nil
+			}
+			return m, tea.Quit
+		}
 		if msg.String() == "ctrl+c" {
 			if m.cancelInflight != nil {
 				m.cancelInflight()
+			}
+			if shouldConfirmQuit(m) {
+				m.confirmQuit = true
+				return m, nil
 			}
 			return m, tea.Quit
 		}
@@ -324,6 +362,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) View() string {
+	if m.confirmQuit {
+		return confirmQuitView(m)
+	}
 	if m.err != nil {
 		return renderWithBanner(m.viewScreen(), errorStyle.Render("error: "+truncateErr(m.err.Error(), 240)))
 	}
@@ -331,6 +372,20 @@ func (m *Model) View() string {
 		return m.load.View()
 	}
 	return m.viewScreen()
+}
+
+// updateConfirmQuit handles input while the confirm-quit modal is open.
+// y confirms; esc and n dismiss; everything else (including a second q
+// or ctrl+c, Enter, arrows, action keys) is a noop so the modal stays up.
+func (m *Model) updateConfirmQuit(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch km.String() {
+	case "y":
+		return m, tea.Quit
+	case "esc", "n":
+		m.confirmQuit = false
+		return m, nil
+	}
+	return m, nil
 }
 
 func (m *Model) viewScreen() string {
@@ -345,6 +400,35 @@ func (m *Model) viewScreen() string {
 		return viewResultView(m)
 	}
 	return ""
+}
+
+// confirmQuitView renders the centered confirm-quit modal. Replaces the
+// underlying screen entirely (mirrors the lang-picker / grade-modal
+// composition) so the user's eye lands on the prompt rather than seeing
+// it dimmed against a busy viewport.
+func confirmQuitView(m *Model) string {
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	h := m.height
+	if h <= 0 {
+		h = 24
+	}
+	body := errorStyle.Render("really quit?") + "\n\n" +
+		dimStyle.Render("unsaved Review attempt will be lost")
+	help := footer(w,
+		footerItem{"y", "confirm"},
+		footerItem{"esc", "cancel"},
+	)
+	return modal.Render(modal.Options{
+		Body:   body,
+		Width:  w,
+		Height: h,
+		PadV:   1,
+		PadH:   3,
+		Footer: help,
+	})
 }
 
 func renderWithBanner(view, banner string) string {

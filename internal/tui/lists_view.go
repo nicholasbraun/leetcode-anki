@@ -67,12 +67,10 @@ func newListsList(width, height int, lists []leetcode.FavoriteList) list.Model {
 
 func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !m.listsReady {
-		// Lists never loaded (likely an error). Only handle quit/back keys.
+		// Lists never loaded (likely an error). Only handle the back key —
+		// quit is dispatched globally in app.go.
 		if km, ok := msg.(tea.KeyMsg); ok {
-			switch {
-			case keyMatch(km, keys.Quit):
-				return m, tea.Quit
-			case keyMatch(km, keys.Back):
+			if keyMatch(km, keys.Back) {
 				m.err = nil
 				return m, tea.Batch(m.load.Start(KindNeutral, "loading your lists"), loadListsCmd(m.ctx, m.client))
 			}
@@ -85,8 +83,6 @@ func updateListsView(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Skip global key handling while filtering — let the list handle text input.
 		if !m.lists.SettingFilter() {
 			switch {
-			case keyMatch(km, keys.Quit):
-				return m, tea.Quit
 			case keyMatch(km, keys.Review):
 				m.reviewMode = !m.reviewMode
 				return m, nil

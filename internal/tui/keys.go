@@ -7,7 +7,6 @@ type keyMap struct {
 	Down        key.Binding
 	Enter       key.Binding
 	Back        key.Binding
-	Quit        key.Binding
 	Edit        key.Binding
 	Run         key.Binding
 	Submit      key.Binding
@@ -25,7 +24,6 @@ var keys = keyMap{
 	Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 	Enter:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
 	Back:        key.NewBinding(key.WithKeys("esc", "backspace"), key.WithHelp("esc", "back")),
-	Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	Edit:        key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Run:         key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "run")),
 	Submit:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "submit")),
