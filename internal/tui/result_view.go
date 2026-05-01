@@ -10,6 +10,7 @@ import (
 
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/sr"
+	"leetcode-anki/internal/tui/modal"
 )
 
 type resultKind int
@@ -419,19 +420,19 @@ func gradeModalView(m *Model) string {
 		rows = append(rows, cursor+footerKeyStyle.Render(o.digit)+"  "+o.style.Render(o.label)+"   "+due)
 	}
 
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7DD3FC")).
-		Padding(1, 3).
-		Render(strings.Join(rows, "\n"))
-
 	help := footer(w,
 		footerItem{"1-4", "rate"},
 		footerItem{"↑/↓ enter", "pick (default Good)"},
 		footerItem{"esc", "cancel"},
 	)
-	placed := lipgloss.Place(w, h-1, lipgloss.Center, lipgloss.Center, modal)
-	return placed + "\n" + help
+	return modal.Render(modal.Options{
+		Body:   strings.Join(rows, "\n"),
+		Width:  w,
+		Height: h,
+		PadV:   1,
+		PadH:   3,
+		Footer: help,
+	})
 }
 
 // submitStatsLine returns the compact runtime/memory/beats line shown

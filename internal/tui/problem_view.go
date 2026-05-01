@@ -12,17 +12,18 @@ import (
 	"leetcode-anki/internal/editor"
 	"leetcode-anki/internal/leetcode"
 	"leetcode-anki/internal/render"
+	"leetcode-anki/internal/tui/modal"
 )
 
 type problemView struct {
 	cache SolutionCache
 
-	vp               viewport.Model
-	rendered         string
-	chosenLang       string // langSlug
-	pickingLang      bool
-	langCursor       int
-	solutionPath     string
+	vp           viewport.Model
+	rendered     string
+	chosenLang   string // langSlug
+	pickingLang  bool
+	langCursor   int
+	solutionPath string
 	// attemptPath is the path the user is editing in Review Mode. Scaffolded
 	// from the language snippet on first 'e' so the canonical solutionPath
 	// (which contains the answer) is never opened in $EDITOR. Reset per
@@ -528,18 +529,17 @@ func langPickerView(m *Model) string {
 		}
 		rows = append(rows, line)
 	}
-	body := strings.Join(rows, "\n")
-	modal := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7DD3FC")).
-		Padding(0, 2).
-		Render(body)
-
 	help := footer(w,
 		footerItem{"↑/↓", "move"},
 		footerItem{"enter", "select"},
 		footerItem{"esc", "cancel"},
 	)
-	placed := lipgloss.Place(w, h-1, lipgloss.Center, lipgloss.Center, modal)
-	return placed + "\n" + help
+	return modal.Render(modal.Options{
+		Body:   strings.Join(rows, "\n"),
+		Width:  w,
+		Height: h,
+		PadV:   0,
+		PadH:   2,
+		Footer: help,
+	})
 }
