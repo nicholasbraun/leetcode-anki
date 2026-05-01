@@ -135,6 +135,23 @@ func buildRunCases(w runResultWire, dataInput, metaData string) []RunCase {
 	return cases
 }
 
+// CountCases reports how many test cases are encoded in dataInput, using
+// metaData's `params` length to know how many lines make one case. Returns
+// 0 for empty input. When metaData is missing or unparseable, falls back to
+// per-line counting — matching splitDataInput's degraded path so the count
+// stays consistent with the chunking the run path will perform.
+func CountCases(dataInput, metaData string) int {
+	if dataInput == "" {
+		return 0
+	}
+	lines := strings.Split(dataInput, "\n")
+	paramCount := metaParamCount(metaData)
+	if paramCount > 0 && len(lines)%paramCount == 0 {
+		return len(lines) / paramCount
+	}
+	return len(lines)
+}
+
 // splitDataInput slices dataInput into n per-case input strings using
 // metaData's params count. Falls back to even chunks then per-line input
 // when MetaData is unparseable or doesn't divide cleanly.

@@ -339,3 +339,29 @@ func TestInterpretSolution_PopulatesCases(t *testing.T) {
 		t.Errorf("case 1 = %#v", c1)
 	}
 }
+
+func TestCountCases(t *testing.T) {
+	const twoSumMeta = `{"name":"twoSum","params":[{"name":"nums","type":"integer[]"},{"name":"target","type":"integer"}],"return":{"type":"integer[]"}}`
+	const oneArgMeta = `{"name":"reverse","params":[{"name":"x","type":"integer"}],"return":{"type":"integer"}}`
+
+	tests := []struct {
+		name      string
+		dataInput string
+		metaData  string
+		want      int
+	}{
+		{name: "empty input", dataInput: "", metaData: twoSumMeta, want: 0},
+		{name: "two cases two params", dataInput: "[1,2]\n3\n[4,5]\n6", metaData: twoSumMeta, want: 2},
+		{name: "three cases two params", dataInput: "a\nb\nc\nd\ne\nf", metaData: twoSumMeta, want: 3},
+		{name: "single param multiple cases", dataInput: "1\n2\n3", metaData: oneArgMeta, want: 3},
+		{name: "malformed metaData falls back to per-line", dataInput: "a\nb\nc", metaData: "not json", want: 3},
+		{name: "missing metaData falls back to per-line", dataInput: "a\nb", metaData: "", want: 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CountCases(tc.dataInput, tc.metaData); got != tc.want {
+				t.Errorf("CountCases(%q, _) = %d, want %d", tc.dataInput, got, tc.want)
+			}
+		})
+	}
+}
